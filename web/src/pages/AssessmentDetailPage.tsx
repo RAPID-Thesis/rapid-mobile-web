@@ -43,7 +43,7 @@ export default function AssessmentDetailPage() {
       <button onClick={() => navigate(-1)} className="text-sm text-blue-600 hover:underline mb-4 inline-block">&larr; Back to list</button>
 
       {/* Banner */}
-      <div className={`${cls.bg} rounded-xl p-6 text-white flex items-center justify-between mb-6`}>
+      <div className={`${cls.bg} rounded-xl p-6 text-white flex items-center justify-between mb-6 shadow-sm`}>
         <div>
           <p className="text-sm opacity-80">Fused Classification</p>
           <p className="text-3xl font-black">{classLabel.toUpperCase()}</p>
@@ -59,7 +59,7 @@ export default function AssessmentDetailPage() {
         {/* Left column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Building Info */}
-          <div className="bg-white rounded-xl p-6">
+          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-800 mb-4">Building Information</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><span className="text-slate-500">Code:</span> <span className="font-semibold">{building?.buildingCode}</span></div>
@@ -76,7 +76,7 @@ export default function AssessmentDetailPage() {
           </div>
 
           {/* Photos */}
-          <div className="bg-white rounded-xl p-6">
+          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-800 mb-4">Photos ({assessment.images.length})</h3>
             <div className="flex gap-3 overflow-x-auto">
               {assessment.images.map((img, i) => (
@@ -90,7 +90,7 @@ export default function AssessmentDetailPage() {
 
           {/* AI Results */}
           {assessment.aiResult && (
-            <div className="bg-white rounded-xl p-6">
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
               <h3 className="font-bold text-slate-800 mb-4">AI Classification Results</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -118,7 +118,7 @@ export default function AssessmentDetailPage() {
 
           {/* Action Plan */}
           {assessment.actionPlan && (
-            <div className="bg-white rounded-xl p-6">
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-800">Action Plan</h3>
                 <span className="text-xs text-slate-500">
@@ -143,7 +143,7 @@ export default function AssessmentDetailPage() {
         {/* Right column */}
         <div className="space-y-6">
           {/* Status */}
-          <div className="bg-white rounded-xl p-6">
+          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-800 mb-3">Status</h3>
             <p className="text-sm capitalize text-slate-600">{assessment.status.replace(/-/g, ' ')}</p>
             <p className="text-xs text-slate-400 mt-1">Phase: {assessment.phase === 'pre-earthquake' ? 'Pre-Earthquake' : 'Post-Earthquake'}</p>
@@ -151,7 +151,7 @@ export default function AssessmentDetailPage() {
           </div>
 
           {/* Engineer Review */}
-          <div className="bg-white rounded-xl p-6">
+          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-800 mb-3">Engineer Review</h3>
             {assessment.engineerReview.reviewedBy ? (
               <div className="text-sm space-y-2">
@@ -202,7 +202,7 @@ export default function AssessmentDetailPage() {
           </div>
 
           {/* Generate Report */}
-          <div className="bg-white rounded-xl p-6">
+          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-800 mb-3">Report</h3>
             <button className="w-full h-10 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 text-sm font-bold rounded-lg transition-colors">
               Generate PDF Report

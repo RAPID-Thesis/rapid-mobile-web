@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   StatusBar,
   ImageBackground,
   Image,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -27,13 +28,17 @@ const InterfaceTheme = {
   steel: '#334155',
 };
 const backgroundImage = require('../../assets/earthquake.jpg');
-const brandingImage = require('../../assets/radar icon.png');
+const brandingImage = require('../../assets/bumbum.png');
 
 export default function LoginScreen() {
   const { width, height } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [fontsLoaded] = useFonts({
     Poppins_500Medium,
     Poppins_600SemiBold,
@@ -46,12 +51,51 @@ export default function LoginScreen() {
   const poppinsBold = fontsLoaded ? { fontFamily: 'Poppins_700Bold' } : undefined;
   const poppinsExtraBold = fontsLoaded ? { fontFamily: 'Poppins_800ExtraBold' } : undefined;
 
+  const canSubmit = useMemo(() => email.trim().length > 0 && password.length > 0, [email, password]);
+
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+    if (emailError) setEmailError('');
+    if (error) setError('');
+  };
+
+  const handlePasswordChange = (value: string) => {
+    setPassword(value);
+    if (passwordError) setPasswordError('');
+    if (error) setError('');
+  };
+
   const handleLogin = () => {
-    if (!email || !password) {
-      setError('Please enter email and password');
+    const normalizedEmail = email.trim();
+    let hasError = false;
+
+    setError('');
+    setEmailError('');
+    setPasswordError('');
+
+    if (!normalizedEmail) {
+      setEmailError('Email is required');
+      hasError = true;
+    } else if (!normalizedEmail.includes('@')) {
+      setEmailError('Enter a valid email address');
+      hasError = true;
+    }
+
+    if (!password) {
+      setPasswordError('Password is required');
+      hasError = true;
+    }
+
+    if (hasError) {
+      setError('Please fix the highlighted fields.');
       return;
     }
-    router.replace('/(tabs)');
+
+    setIsSubmitting(true);
+    setTimeout(() => {
+      setIsSubmitting(false);
+      router.replace('/(tabs)');
+    }, 600);
   };
 
   return (
@@ -99,21 +143,40 @@ export default function LoginScreen() {
                 <TextInput
                   style={[styles.input, poppinsMedium]}
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={handleEmailChange}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  returnKeyType="next"
                 />
+                {emailError ? <Text style={[styles.fieldError, poppinsMedium]}>{emailError}</Text> : null}
               </View>
 
               <Text style={[styles.label, poppinsSemiBold]}>Password</Text>
               <View style={styles.inputGroup}>
                 <Text style={[styles.fieldHint, poppinsMedium]}>Enter password</Text>
-                <TextInput
-                  style={[styles.input, poppinsMedium]}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
+                <View style={styles.passwordRow}>
+                  <TextInput
+                    style={[styles.input, styles.passwordInput, poppinsMedium]}
+                    value={password}
+                    onChangeText={handlePasswordChange}
+                    secureTextEntry={!showPassword}
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                  />
+                  <TouchableOpacity
+                    style={styles.passwordToggle}
+                    onPress={() => setShowPassword((prev) => !prev)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.passwordToggleText, poppinsSemiBold]}>
+                      {showPassword ? 'Hide' : 'Show'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {passwordError ? <Text style={[styles.fieldError, poppinsMedium]}>{passwordError}</Text> : null}
               </View>
 
               <View style={styles.inlineRow}>
@@ -121,8 +184,19 @@ export default function LoginScreen() {
                 <Text style={[styles.inlineTextAction, poppinsBold]}>Need help?</Text>
               </View>
 
-              <TouchableOpacity style={styles.button} onPress={handleLogin}>
-                <Text style={[styles.buttonText, poppinsExtraBold]}>Sign In</Text>
+              <TouchableOpacity
+                style={[styles.button, (!canSubmit || isSubmitting) && styles.buttonDisabled]}
+                onPress={handleLogin}
+                disabled={!canSubmit || isSubmitting}
+              >
+                {isSubmitting ? (
+                  <View style={styles.buttonLoading}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={[styles.buttonText, poppinsExtraBold]}>Signing In...</Text>
+                  </View>
+                ) : (
+                  <Text style={[styles.buttonText, poppinsExtraBold]}>Sign In</Text>
+                )}
               </TouchableOpacity>
 
               <View style={styles.metaRow}>
@@ -289,11 +363,41 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: Spacing.sm,
   },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
   fieldHint: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
     marginBottom: 6,
     marginLeft: 2,
+  },
+  fieldError: {
+    color: Colors.error,
+    fontSize: FontSize.xs,
+    marginTop: 6,
+    marginLeft: 2,
+  },
+  passwordInput: {
+    flex: 1,
+  },
+  passwordToggle: {
+    height: MinTouchTarget,
+    minWidth: 56,
+    borderWidth: 1,
+    borderColor: 'rgba(203,213,225,0.9)',
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  passwordToggleText: {
+    color: InterfaceTheme.steel,
+    fontSize: FontSize.xs,
+    fontWeight: '700',
   },
   inlineRow: {
     flexDirection: 'row',
@@ -325,6 +429,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+  },
+  buttonDisabled: {
+    backgroundColor: '#6B7280',
+    borderColor: '#6B7280',
+  },
+  buttonLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   buttonText: {
     color: '#FFFFFF',

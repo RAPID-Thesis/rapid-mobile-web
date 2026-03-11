@@ -14,13 +14,13 @@ export default function UsersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">User Management</h2>
+        <h2 className="text-2xl font-black text-slate-800">User Management</h2>
         <button className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors">
           Add User
         </button>
       </div>
 
-      <div className="bg-white rounded-xl overflow-hidden">
+      <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm">
         <table className="w-full">
           <thead>
             <tr className="text-left text-xs text-slate-500 uppercase tracking-wider bg-slate-50">

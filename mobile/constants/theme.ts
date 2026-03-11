@@ -1,16 +1,20 @@
 export const Colors = {
   primary: '#1B4D8E',
   primaryLight: '#2E6ABF',
+  primaryDark: '#143A6B',
   secondary: '#F59E0B',
-  background: '#F8FAFC',
+  background: '#F1F5F9',
   surface: '#FFFFFF',
+  surfaceSoft: '#F8FAFC',
   text: '#0F172A',
   textSecondary: '#475569',
   textMuted: '#94A3B8',
   border: '#E2E8F0',
+  borderStrong: '#CBD5E1',
   error: '#DC2626',
   success: '#16A34A',
   warning: '#F59E0B',
+  info: '#2563EB',
 
   safe: '#16A34A',
   restricted: '#F59E0B',
@@ -45,6 +49,7 @@ export const BorderRadius = {
   sm: 6,
   md: 10,
   lg: 16,
+  xl: 20,
   full: 9999,
 };
 

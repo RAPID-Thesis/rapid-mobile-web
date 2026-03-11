@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,19 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
-import { ImageAngle, AssessmentPhase, BuildingUse, SoilClass } from '../../types';
+import { ImageAngle, AssessmentPhase, BuildingUse } from '../../types';
+import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
+import { WizardTheme } from './wizardTheme';
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
+const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
 
 const ANGLES: { key: ImageAngle; label: string; icon: string }[] = [
   { key: 'front', label: 'Front Facade', icon: 'image' },
@@ -26,15 +32,42 @@ function StepIndicator({ current }: { current: number }) {
   return (
     <View style={styles.stepRow}>
       {STEPS.map((label, i) => (
-        <View key={label} style={styles.stepItem}>
-          <View style={[styles.stepCircle, i <= current && styles.stepCircleActive]}>
-            {i < current ? (
-              <Ionicons name="checkmark" size={14} color="#FFF" />
-            ) : (
-              <Text style={[styles.stepNum, i <= current && styles.stepNumActive]}>{i + 1}</Text>
-            )}
+        <View key={label} style={styles.stepItemWrap}>
+          <View style={styles.stepItem}>
+            <View
+              style={[
+                styles.stepCircle,
+                i === current && styles.stepCircleActive,
+                i < current && styles.stepCircleComplete,
+              ]}
+            >
+              {i < current ? (
+                <Ionicons name="checkmark" size={14} color="#FFF" />
+              ) : (
+                <Text
+                  style={[
+                    styles.stepNum,
+                    i === current && styles.stepNumActive,
+                    i < current && styles.stepNumComplete,
+                  ]}
+                >
+                  {i + 1}
+                </Text>
+              )}
+            </View>
+            <Text
+              style={[
+                styles.stepLabel,
+                i === current && styles.stepLabelActive,
+                i < current && styles.stepLabelComplete,
+              ]}
+            >
+              {label}
+            </Text>
           </View>
-          <Text style={[styles.stepLabel, i <= current && styles.stepLabelActive]}>{label}</Text>
+          {i < STEPS.length - 1 ? (
+            <View style={[styles.stepConnector, i < current && styles.stepConnectorDone]} />
+          ) : null}
         </View>
       ))}
     </View>
@@ -48,13 +81,27 @@ export default function NewAssessmentScreen() {
   const [address, setAddress] = useState('');
   const [barangay, setBarangay] = useState('');
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
-  const [stories, setStories] = useState('');
-  const [yearBuilt, setYearBuilt] = useState('');
-  const [structuralSystem, setStructuralSystem] = useState('');
-  const [soilClass, setSoilClass] = useState<SoilClass>('C');
-  const [material, setMaterial] = useState('');
-  const [condition, setCondition] = useState('');
   const [capturedAngles, setCapturedAngles] = useState<ImageAngle[]>([]);
+  const [structuralData, setStructuralData] = useState<StructuralDataState>({
+    stories: '',
+    yearBuilt: '',
+    structuralSystem: '',
+    primaryMaterial: '',
+    condition: '',
+    soilClass: '',
+    topography: '',
+    verticalIrregularity: false,
+    planIrregularity: false,
+    poundingHazard: false,
+    fallingHazard: false,
+  });
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }, [step]);
 
   const mockCapture = (angle: ImageAngle) => {
     if (!capturedAngles.includes(angle)) {
@@ -71,49 +118,105 @@ export default function NewAssessmentScreen() {
   const canProceed = () => {
     if (step === 0) return buildingCode.length > 0 && address.length > 0;
     if (step === 1) return capturedAngles.length >= 2;
-    if (step === 2) return material.length > 0;
+    if (step === 2) {
+      return Boolean(
+        structuralData.primaryMaterial &&
+        structuralData.structuralSystem &&
+        structuralData.soilClass &&
+        structuralData.topography
+      );
+    }
     return true;
   };
 
   return (
     <View style={styles.container}>
-      <StepIndicator current={step} />
+      <View style={styles.headerShell}>
+        <StepIndicator current={step} />
+        <View style={styles.progressRow}>
+          <Text style={styles.progressText}>Step {step + 1} of {STEPS.length}</Text>
+          <Text style={styles.progressText}>
+            {Math.round(((step + 1) / STEPS.length) * 100)}% complete
+          </Text>
+        </View>
+      </View>
 
       <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollInner}>
+        <View style={styles.infoBanner}>
+          <Ionicons name="shield-checkmark" size={18} color={WizardTheme.colors.primary} />
+          <Text style={styles.infoBannerText}>
+            FEMA P-154 and ATC-20 aligned workflow. Minimum 2 photo angles required.
+          </Text>
+        </View>
+
         {step === 0 && (
-          <View>
+          <View style={styles.stepCard}>
             <Text style={styles.sectionTitle}>Assessment Phase</Text>
             <View style={styles.toggleRow}>
               <TouchableOpacity
                 style={[styles.toggleBtn, phase === 'pre-earthquake' && styles.toggleBtnActive]}
                 onPress={() => setPhase('pre-earthquake')}
               >
-                <Ionicons name="shield-checkmark" size={18} color={phase === 'pre-earthquake' ? '#FFF' : Colors.text} />
-                <Text style={[styles.toggleText, phase === 'pre-earthquake' && styles.toggleTextActive]}>Pre-Earthquake</Text>
+                <Ionicons
+                  name="shield-checkmark"
+                  size={18}
+                  color={phase === 'pre-earthquake' ? '#FFF' : WizardTheme.colors.text}
+                />
+                <Text style={[styles.toggleText, phase === 'pre-earthquake' && styles.toggleTextActive]}>
+                  Pre-Earthquake
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.toggleBtn, phase === 'post-earthquake' && styles.toggleBtnActive]}
                 onPress={() => setPhase('post-earthquake')}
               >
-                <Ionicons name="warning" size={18} color={phase === 'post-earthquake' ? '#FFF' : Colors.text} />
-                <Text style={[styles.toggleText, phase === 'post-earthquake' && styles.toggleTextActive]}>Post-Earthquake</Text>
+                <Ionicons
+                  name="warning"
+                  size={18}
+                  color={phase === 'post-earthquake' ? '#FFF' : WizardTheme.colors.text}
+                />
+                <Text style={[styles.toggleText, phase === 'post-earthquake' && styles.toggleTextActive]}>
+                  Post-Earthquake
+                </Text>
               </TouchableOpacity>
             </View>
 
             <Text style={styles.sectionTitle}>Building Information</Text>
             <Text style={styles.fieldLabel}>Building Code *</Text>
-            <TextInput style={styles.input} value={buildingCode} onChangeText={setBuildingCode} placeholder="e.g. TAAL-011" placeholderTextColor={Colors.textMuted} />
+            <TextInput
+              style={styles.input}
+              value={buildingCode}
+              onChangeText={setBuildingCode}
+              placeholder="e.g. TAAL-011"
+              placeholderTextColor={WizardTheme.colors.textMuted}
+            />
 
             <Text style={styles.fieldLabel}>Address *</Text>
-            <TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="Street address" placeholderTextColor={Colors.textMuted} />
+            <TextInput
+              style={styles.input}
+              value={address}
+              onChangeText={setAddress}
+              placeholder="Street address"
+              placeholderTextColor={WizardTheme.colors.textMuted}
+            />
 
             <Text style={styles.fieldLabel}>Barangay</Text>
-            <TextInput style={styles.input} value={barangay} onChangeText={setBarangay} placeholder="Barangay name" placeholderTextColor={Colors.textMuted} />
+            <TextInput
+              style={styles.input}
+              value={barangay}
+              onChangeText={setBarangay}
+              placeholder="Barangay name"
+              placeholderTextColor={WizardTheme.colors.textMuted}
+            />
 
             <Text style={styles.fieldLabel}>Building Use</Text>
             <View style={styles.chipRow}>
               {(['residential', 'commercial', 'institutional', 'industrial', 'mixed'] as BuildingUse[]).map((u) => (
-                <TouchableOpacity key={u} style={[styles.chip, buildingUse === u && styles.chipActive]} onPress={() => setBuildingUse(u)}>
+                <TouchableOpacity
+                  key={u}
+                  style={[styles.chip, buildingUse === u && styles.chipActive]}
+                  onPress={() => setBuildingUse(u)}
+                >
                   <Text style={[styles.chipText, buildingUse === u && styles.chipTextActive]}>{u}</Text>
                 </TouchableOpacity>
               ))}
@@ -122,9 +225,11 @@ export default function NewAssessmentScreen() {
         )}
 
         {step === 1 && (
-          <View>
+          <View style={styles.stepCard}>
             <Text style={styles.sectionTitle}>Smart Framing Guide</Text>
-            <Text style={styles.hint}>Capture at least 2 of 4 angles. Tap each angle to simulate capture.</Text>
+            <Text style={styles.hint}>
+              Capture at least 2 of 4 angles. Tap each angle to simulate capture.
+            </Text>
 
             <View style={styles.cameraPreview}>
               <View style={styles.gridOverlay}>
@@ -143,11 +248,19 @@ export default function NewAssessmentScreen() {
             {ANGLES.map((a) => {
               const captured = capturedAngles.includes(a.key);
               return (
-                <TouchableOpacity key={a.key} style={[styles.angleRow, captured && styles.angleRowCaptured]} onPress={() => mockCapture(a.key)}>
-                  <Ionicons name={captured ? 'checkmark-circle' : (a.icon as any)} size={24} color={captured ? Colors.success : Colors.textSecondary} />
+                <TouchableOpacity
+                  key={a.key}
+                  style={[styles.angleRow, captured && styles.angleRowCaptured]}
+                  onPress={() => mockCapture(a.key)}
+                >
+                  <Ionicons
+                    name={captured ? 'checkmark-circle' : (a.icon as any)}
+                    size={24}
+                    color={captured ? WizardTheme.colors.success : WizardTheme.colors.textMuted}
+                  />
                   <Text style={[styles.angleLabel, captured && styles.angleLabelCaptured]}>{a.label}</Text>
                   {!captured && <Text style={styles.angleTap}>TAP TO CAPTURE</Text>}
-                  {captured && <Text style={[styles.angleTap, { color: Colors.success }]}>CAPTURED</Text>}
+                  {captured && <Text style={[styles.angleTap, styles.angleTapCaptured]}>CAPTURED</Text>}
                 </TouchableOpacity>
               );
             })}
@@ -155,64 +268,71 @@ export default function NewAssessmentScreen() {
         )}
 
         {step === 2 && (
-          <View>
-            <Text style={styles.sectionTitle}>Structural Data Checklist</Text>
-
-            <Text style={styles.fieldLabel}>Number of Stories</Text>
-            <TextInput style={styles.input} value={stories} onChangeText={setStories} placeholder="e.g. 2" keyboardType="numeric" placeholderTextColor={Colors.textMuted} />
-
-            <Text style={styles.fieldLabel}>Year Built</Text>
-            <TextInput style={styles.input} value={yearBuilt} onChangeText={setYearBuilt} placeholder="e.g. 1990" keyboardType="numeric" placeholderTextColor={Colors.textMuted} />
-
-            <Text style={styles.fieldLabel}>Structural System</Text>
-            <TextInput style={styles.input} value={structuralSystem} onChangeText={setStructuralSystem} placeholder="e.g. Reinforced Concrete Frame" placeholderTextColor={Colors.textMuted} />
-
-            <Text style={styles.fieldLabel}>Primary Material *</Text>
-            <TextInput style={styles.input} value={material} onChangeText={setMaterial} placeholder="e.g. Reinforced Concrete" placeholderTextColor={Colors.textMuted} />
-
-            <Text style={styles.fieldLabel}>Condition</Text>
-            <TextInput style={[styles.input, { height: 80, textAlignVertical: 'top' }]} value={condition} onChangeText={setCondition} placeholder="Describe visible condition..." multiline placeholderTextColor={Colors.textMuted} />
-
-            <Text style={styles.fieldLabel}>Soil Classification</Text>
-            <View style={styles.chipRow}>
-              {(['A', 'B', 'C', 'D', 'E', 'F'] as SoilClass[]).map((s) => (
-                <TouchableOpacity key={s} style={[styles.chip, soilClass === s && styles.chipActive]} onPress={() => setSoilClass(s)}>
-                  <Text style={[styles.chipText, soilClass === s && styles.chipTextActive]}>{s}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          <Step3StructuralData
+            value={structuralData}
+            onChange={setStructuralData}
+            onBack={() => setStep(1)}
+            onNext={() => setStep(3)}
+            canProceed={canProceed()}
+          />
         )}
 
         {step === 3 && (
-          <View>
+          <View style={styles.stepCard}>
             <Text style={styles.sectionTitle}>Review Assessment</Text>
+
+            <View style={styles.offlineNotice}>
+              <Ionicons name="cloud-offline" size={20} color={WizardTheme.colors.infoText} />
+              <Text style={styles.offlineText}>
+                📡 Offline Mode Active: Assessment will be saved locally and synced automatically when
+                connection is restored.
+              </Text>
+            </View>
 
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Phase</Text>
-              <Text style={styles.reviewValue}>{phase === 'pre-earthquake' ? 'Pre-Earthquake' : 'Post-Earthquake'}</Text>
+              <Text style={styles.reviewValue}>
+                {phase === 'pre-earthquake' ? 'Pre-Earthquake' : 'Post-Earthquake'}
+              </Text>
             </View>
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Building</Text>
-              <Text style={styles.reviewValue}>{buildingCode} — {address}</Text>
+              <Text style={styles.reviewValue}>
+                {buildingCode} — {address}
+              </Text>
             </View>
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Photos</Text>
-              <Text style={styles.reviewValue}>{capturedAngles.length} captured ({capturedAngles.join(', ')})</Text>
+              <Text style={styles.reviewValue}>
+                {capturedAngles.length} captured ({capturedAngles.join(', ')})
+              </Text>
             </View>
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Material</Text>
-              <Text style={styles.reviewValue}>{material || 'Not specified'}</Text>
+              <Text style={styles.reviewValue}>{structuralData.primaryMaterial || 'Not specified'}</Text>
             </View>
             <View style={styles.reviewSection}>
-              <Text style={styles.reviewLabel}>Soil Class</Text>
-              <Text style={styles.reviewValue}>{soilClass}</Text>
+              <Text style={styles.reviewLabel}>Structural System</Text>
+              <Text style={styles.reviewValue}>{structuralData.structuralSystem || 'Not specified'}</Text>
             </View>
-
-            <View style={styles.offlineNotice}>
-              <Ionicons name="cloud-offline" size={20} color={Colors.statusPendingSync} />
-              <Text style={styles.offlineText}>
-                This assessment will be saved locally and synced when connectivity is available.
+            <View style={styles.reviewSection}>
+              <Text style={styles.reviewLabel}>Soil & Topography</Text>
+              <Text style={styles.reviewValue}>
+                {(structuralData.soilClass || 'Not specified')} /{' '}
+                {(structuralData.topography || 'Not specified')}
+              </Text>
+            </View>
+            <View style={styles.reviewSection}>
+              <Text style={styles.reviewLabel}>Vulnerability Modifiers</Text>
+              <Text style={styles.reviewValue}>
+                {[
+                  structuralData.verticalIrregularity ? 'Vertical irregularity' : null,
+                  structuralData.planIrregularity ? 'Plan irregularity' : null,
+                  structuralData.poundingHazard ? 'Pounding hazard' : null,
+                  structuralData.fallingHazard ? 'Falling hazard' : null,
+                ]
+                  .filter(Boolean)
+                  .join(', ') || 'None observed'}
               </Text>
             </View>
           </View>
@@ -220,71 +340,285 @@ export default function NewAssessmentScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        {step > 0 && (
-          <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)}>
-            <Text style={styles.backBtnText}>Back</Text>
-          </TouchableOpacity>
+        {step === 2 ? null : (
+          <>
+            {step > 0 && (
+              <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)}>
+                <Text style={styles.backBtnText}>Back</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.nextBtn, !canProceed() && styles.nextBtnDisabled]}
+              onPress={() => (step < 3 ? setStep(step + 1) : handleSubmit())}
+              disabled={!canProceed()}
+            >
+              <Text style={styles.nextBtnText}>{step < 3 ? 'Next' : 'Save Assessment'}</Text>
+            </TouchableOpacity>
+          </>
         )}
-        <TouchableOpacity
-          style={[styles.nextBtn, !canProceed() && styles.nextBtnDisabled]}
-          onPress={() => (step < 3 ? setStep(step + 1) : handleSubmit())}
-          disabled={!canProceed()}
-        >
-          <Text style={styles.nextBtnText}>{step < 3 ? 'Next' : 'Save Assessment'}</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  stepRow: { flexDirection: 'row', justifyContent: 'space-between', padding: Spacing.md, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  stepItem: { alignItems: 'center', flex: 1 },
-  stepCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.border, justifyContent: 'center', alignItems: 'center' },
-  stepCircleActive: { backgroundColor: Colors.primary },
-  stepNum: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textMuted },
-  stepNumActive: { color: '#FFF' },
-  stepLabel: { fontSize: 10, color: Colors.textMuted, marginTop: 4, textAlign: 'center' },
-  stepLabelActive: { color: Colors.primary, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: WizardTheme.colors.background },
+  headerShell: {
+    backgroundColor: WizardTheme.colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: WizardTheme.colors.border,
+    paddingTop: WizardTheme.spacing.md,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    paddingHorizontal: WizardTheme.spacing.md,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  stepItemWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepConnector: {
+    flex: 1,
+    height: 2,
+    borderRadius: WizardTheme.radius.pill,
+    backgroundColor: WizardTheme.colors.pending,
+    marginHorizontal: 6,
+    marginTop: 14,
+    opacity: 0.35,
+  },
+  stepConnectorDone: {
+    backgroundColor: WizardTheme.colors.success,
+    opacity: 1,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: WizardTheme.spacing.md,
+    paddingVertical: WizardTheme.spacing.md,
+  },
+  progressText: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+    fontWeight: '700',
+  },
+  stepItem: { alignItems: 'center', minWidth: 66 },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepCircleActive: { backgroundColor: WizardTheme.colors.primary },
+  stepCircleComplete: { backgroundColor: WizardTheme.colors.success },
+  stepNum: { fontSize: 12, fontWeight: '700', color: WizardTheme.colors.pending },
+  stepNumActive: { color: '#FFFFFF' },
+  stepNumComplete: { color: '#FFFFFF' },
+  stepLabel: {
+    fontSize: 12,
+    color: WizardTheme.colors.pending,
+    marginTop: 6,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  stepLabelActive: { color: WizardTheme.colors.primary, fontWeight: '800' },
+  stepLabelComplete: { color: WizardTheme.colors.success, fontWeight: '700' },
   scrollContent: { flex: 1 },
-  scrollInner: { padding: Spacing.md, paddingBottom: 100 },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.text, marginBottom: Spacing.sm, marginTop: Spacing.sm },
-  hint: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.md },
-  fieldLabel: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text, marginTop: Spacing.md, marginBottom: Spacing.xs },
-  input: { height: MinTouchTarget, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.md, fontSize: FontSize.md, color: Colors.text, backgroundColor: Colors.surface },
-  toggleRow: { flexDirection: 'row', gap: Spacing.sm },
-  toggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs, height: MinTouchTarget, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.sm, backgroundColor: Colors.surface },
-  toggleBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  toggleText: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text },
+  scrollInner: { padding: WizardTheme.spacing.md, paddingBottom: 100, gap: WizardTheme.spacing.lg },
+  stepCard: {
+    backgroundColor: WizardTheme.colors.card,
+    borderRadius: WizardTheme.radius.md,
+    padding: WizardTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    ...WizardTheme.elevation,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: WizardTheme.colors.text,
+    marginBottom: WizardTheme.spacing.md,
+    marginTop: WizardTheme.spacing.sm,
+  },
+  hint: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+    marginBottom: WizardTheme.spacing.md,
+  },
+  infoBanner: {
+    backgroundColor: WizardTheme.colors.infoBg,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.infoBorder,
+    borderRadius: WizardTheme.radius.md,
+    padding: WizardTheme.spacing.md,
+    flexDirection: 'row',
+    gap: WizardTheme.spacing.sm,
+    alignItems: 'center',
+  },
+  infoBannerText: {
+    flex: 1,
+    color: WizardTheme.colors.infoText,
+    fontSize: WizardTheme.typography.helper,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  fieldLabel: {
+    fontSize: WizardTheme.typography.label,
+    fontWeight: '700',
+    color: WizardTheme.colors.text,
+    marginTop: WizardTheme.spacing.md,
+    marginBottom: WizardTheme.spacing.sm,
+  },
+  input: {
+    minHeight: CONTROL_HEIGHT,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.md,
+    paddingHorizontal: WizardTheme.spacing.md,
+    fontSize: WizardTheme.typography.body,
+    color: WizardTheme.colors.text,
+    backgroundColor: WizardTheme.colors.card,
+  },
+  toggleRow: { flexDirection: 'row', gap: WizardTheme.spacing.md },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: WizardTheme.spacing.sm,
+    minHeight: CONTROL_HEIGHT,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.md,
+    backgroundColor: WizardTheme.colors.card,
+  },
+  toggleBtnActive: { backgroundColor: WizardTheme.colors.primary, borderColor: WizardTheme.colors.primary },
+  toggleText: { fontSize: WizardTheme.typography.body, fontWeight: '700', color: WizardTheme.colors.text },
   toggleTextActive: { color: '#FFF' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
-  chip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: { fontSize: FontSize.sm, color: Colors.text },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: WizardTheme.spacing.sm },
+  chip: {
+    minHeight: CONTROL_HEIGHT,
+    paddingHorizontal: WizardTheme.spacing.md,
+    borderRadius: WizardTheme.radius.pill,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    backgroundColor: WizardTheme.colors.card,
+    justifyContent: 'center',
+  },
+  chipActive: { backgroundColor: WizardTheme.colors.primary, borderColor: WizardTheme.colors.primary },
+  chipText: { fontSize: WizardTheme.typography.body, color: WizardTheme.colors.text },
   chipTextActive: { color: '#FFF' },
-  cameraPreview: { height: 220, backgroundColor: '#1a1a2e', borderRadius: BorderRadius.md, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', marginBottom: Spacing.md },
+  cameraPreview: {
+    height: 220,
+    backgroundColor: '#0F172A',
+    borderRadius: WizardTheme.radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    marginBottom: WizardTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
   gridOverlay: { ...StyleSheet.absoluteFillObject },
   gridLineH: { position: 'absolute', top: '33%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
   gridLineH2: { position: 'absolute', top: '66%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
   gridLineV: { position: 'absolute', left: '33%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
   gridLineV2: { position: 'absolute', left: '66%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
   centerCross: { zIndex: 1 },
-  cameraLabel: { position: 'absolute', bottom: 12, color: 'rgba(255,255,255,0.6)', fontSize: FontSize.xs },
-  angleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md, backgroundColor: Colors.surface, borderRadius: BorderRadius.sm, marginBottom: Spacing.xs },
-  angleRowCaptured: { backgroundColor: '#F0FFF4' },
-  angleLabel: { flex: 1, fontSize: FontSize.md, color: Colors.text },
-  angleLabelCaptured: { color: Colors.success, fontWeight: '600' },
-  angleTap: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.primary },
-  reviewSection: { backgroundColor: Colors.surface, borderRadius: BorderRadius.sm, padding: Spacing.md, marginBottom: Spacing.xs },
-  reviewLabel: { fontSize: FontSize.xs, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
-  reviewValue: { fontSize: FontSize.md, color: Colors.text, fontWeight: '500', marginTop: 2 },
-  offlineNotice: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: '#EEF2FF', padding: Spacing.md, borderRadius: BorderRadius.md, marginTop: Spacing.md },
-  offlineText: { flex: 1, fontSize: FontSize.sm, color: Colors.statusPendingSync },
-  footer: { flexDirection: 'row', gap: Spacing.sm, padding: Spacing.md, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.border },
-  backBtn: { flex: 1, height: MinTouchTarget, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.sm },
-  backBtnText: { fontSize: FontSize.md, fontWeight: '600', color: Colors.text },
-  nextBtn: { flex: 2, height: MinTouchTarget, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primary, borderRadius: BorderRadius.sm },
-  nextBtnDisabled: { backgroundColor: Colors.textMuted },
-  nextBtnText: { color: '#FFF', fontSize: FontSize.md, fontWeight: '700' },
+  cameraLabel: {
+    position: 'absolute',
+    bottom: 12,
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: WizardTheme.typography.helper,
+  },
+  angleRow: {
+    minHeight: CONTROL_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: WizardTheme.spacing.md,
+    paddingHorizontal: WizardTheme.spacing.md,
+    backgroundColor: WizardTheme.colors.card,
+    borderRadius: WizardTheme.radius.md,
+    marginBottom: WizardTheme.spacing.sm,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+  },
+  angleRowCaptured: { backgroundColor: '#EDF7EE', borderColor: '#9AD4A1' },
+  angleLabel: { flex: 1, fontSize: WizardTheme.typography.body, color: WizardTheme.colors.text, fontWeight: '600' },
+  angleLabelCaptured: { color: WizardTheme.colors.success, fontWeight: '700' },
+  angleTap: { fontSize: 12, fontWeight: '800', color: WizardTheme.colors.primary },
+  angleTapCaptured: { color: WizardTheme.colors.success },
+  reviewSection: {
+    backgroundColor: WizardTheme.colors.card,
+    borderRadius: WizardTheme.radius.md,
+    padding: WizardTheme.spacing.md,
+    marginBottom: WizardTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+  },
+  reviewLabel: {
+    fontSize: 12,
+    color: WizardTheme.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '700',
+  },
+  reviewValue: {
+    fontSize: WizardTheme.typography.body,
+    color: WizardTheme.colors.text,
+    fontWeight: '600',
+    marginTop: 6,
+    lineHeight: 22,
+  },
+  offlineNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: WizardTheme.spacing.sm,
+    backgroundColor: WizardTheme.colors.infoBg,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.infoBorder,
+    padding: WizardTheme.spacing.md,
+    borderRadius: WizardTheme.radius.md,
+    marginBottom: WizardTheme.spacing.lg,
+  },
+  offlineText: {
+    flex: 1,
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.infoText,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    gap: WizardTheme.spacing.md,
+    padding: WizardTheme.spacing.md,
+    backgroundColor: WizardTheme.colors.card,
+    borderTopWidth: 1,
+    borderTopColor: WizardTheme.colors.border,
+  },
+  backBtn: {
+    flex: 1,
+    minHeight: CONTROL_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.md,
+    backgroundColor: WizardTheme.colors.card,
+  },
+  backBtnText: { fontSize: WizardTheme.typography.body, fontWeight: '700', color: WizardTheme.colors.text },
+  nextBtn: {
+    flex: 2,
+    minHeight: CONTROL_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: WizardTheme.colors.primary,
+    borderRadius: WizardTheme.radius.md,
+  },
+  nextBtnDisabled: { backgroundColor: WizardTheme.colors.pending },
+  nextBtnText: { color: '#FFF', fontSize: WizardTheme.typography.body, fontWeight: '800' },
 });

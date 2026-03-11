@@ -13,15 +13,15 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
   const roleLabel = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
 
   return (
-    <aside className={`bg-slate-900 text-white flex flex-col transition-all duration-200 ${collapsed ? 'w-16' : 'w-60'}`}>
-      <div className="flex items-center gap-2 px-4 h-16 border-b border-slate-700">
+    <aside className={`bg-slate-950 text-white flex flex-col transition-all duration-200 ${collapsed ? 'w-16' : 'w-64'}`}>
+      <div className="flex items-center gap-2 px-4 h-16 border-b border-slate-800">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center font-black text-sm">R</div>
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-black text-sm">R</div>
             <span className="font-bold text-lg tracking-wide">RAPID</span>
           </div>
         )}
-        <button onClick={onToggle} className="ml-auto p-2 hover:bg-slate-700 rounded-lg">
+        <button onClick={onToggle} className="ml-auto p-2 hover:bg-slate-800 rounded-lg">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />
           </svg>
@@ -36,7 +36,7 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
             end={item.to === '/'}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 mx-2 rounded-lg transition-colors ${
-                isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-900 hover:text-white'
               }`
             }
           >
@@ -49,7 +49,7 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
       </nav>
 
       {!collapsed && (
-        <div className="border-t border-slate-700 p-4">
+        <div className="border-t border-slate-800 p-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold">
               {currentUser.fullName.split(' ').map(n => n[0]).join('')}

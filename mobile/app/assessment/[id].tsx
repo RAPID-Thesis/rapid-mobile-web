@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
 import { mockAssessments } from '../../mock/assessments';
 import { mockBuildings } from '../../mock/buildings';
@@ -57,7 +58,19 @@ export default function AssessmentDetailScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Classification Banner */}
-      <View style={[styles.banner, { backgroundColor: badgeColor }]}>
+      <LinearGradient
+        colors={[
+          badgeColor,
+          classLabel === 'UNSAFE' || classLabel === 'high'
+            ? '#7F1D1D'
+            : classLabel === 'RESTRICTED' || classLabel === 'moderate'
+              ? '#92400E'
+              : '#166534',
+        ]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.banner}
+      >
         <Ionicons
           name={isUnsafe ? 'alert-circle' : isRestricted ? 'warning' : 'checkmark-circle'}
           size={32}
@@ -72,7 +85,7 @@ export default function AssessmentDetailScreen() {
         <View style={styles.priorityBadge}>
           <Text style={styles.priorityText}>Priority: {assessment.priorityScore}</Text>
         </View>
-      </View>
+      </LinearGradient>
 
       {/* Building Info */}
       <SectionCard title="Building Information">
@@ -119,11 +132,23 @@ export default function AssessmentDetailScreen() {
           <Text style={[styles.subTitle, { marginTop: Spacing.md }]}>
             Fused Result (Image {(assessment.aiResult.fusionWeights.image * 100).toFixed(0)}% / Tabular {(assessment.aiResult.fusionWeights.tabular * 100).toFixed(0)}%)
           </Text>
-          <View style={[styles.fusedBadge, { backgroundColor: badgeColor }]}>
+          <LinearGradient
+            colors={[
+              badgeColor,
+              classLabel === 'UNSAFE' || classLabel === 'high'
+                ? '#7F1D1D'
+                : classLabel === 'RESTRICTED' || classLabel === 'moderate'
+                  ? '#92400E'
+                  : '#166534',
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.fusedBadge}
+          >
             <Text style={styles.fusedText}>
               {classLabel.toUpperCase()} — {fused ? (fused.confidence * 100).toFixed(1) : 0}%
             </Text>
-          </View>
+          </LinearGradient>
         </SectionCard>
       )}
 
@@ -168,35 +193,68 @@ export default function AssessmentDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingBottom: Spacing.xl },
+  content: { paddingBottom: Spacing.xl, paddingTop: Spacing.sm },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { fontSize: FontSize.lg, color: Colors.error },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 5,
+  },
   bannerLabel: { color: '#FFF', fontSize: FontSize.xl, fontWeight: '800' },
   bannerConf: { color: 'rgba(255,255,255,0.8)', fontSize: FontSize.sm },
-  priorityBadge: { marginLeft: 'auto', backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm },
+  priorityBadge: {
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(0,0,0,0.24)',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
   priorityText: { color: '#FFF', fontSize: FontSize.xs, fontWeight: '700' },
-  section: { backgroundColor: Colors.surface, marginHorizontal: Spacing.md, marginTop: Spacing.md, borderRadius: BorderRadius.md, padding: Spacing.md },
-  sectionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text, marginBottom: Spacing.sm },
+  section: {
+    backgroundColor: Colors.surface,
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.md,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sectionTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text, marginBottom: Spacing.sm },
   subTitle: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.textSecondary, marginBottom: Spacing.xs },
   dataRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.xs, borderBottomWidth: 1, borderBottomColor: Colors.border },
   dataLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
   dataValue: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text, maxWidth: '60%', textAlign: 'right' },
   photoScroll: { marginTop: Spacing.xs },
   photoCard: { marginRight: Spacing.sm, alignItems: 'center' },
-  photo: { width: 120, height: 90, borderRadius: BorderRadius.sm, backgroundColor: Colors.border },
+  photo: { width: 120, height: 90, borderRadius: BorderRadius.sm, backgroundColor: Colors.border, borderWidth: 1, borderColor: Colors.borderStrong },
   photoAngle: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 4 },
   confRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
   confLabel: { width: 90, fontSize: FontSize.xs, fontWeight: '600', color: Colors.text },
   confBarBg: { flex: 1, height: 10, backgroundColor: Colors.border, borderRadius: 5, overflow: 'hidden' },
   confBarFill: { height: '100%', borderRadius: 5 },
   confValue: { width: 36, fontSize: FontSize.xs, fontWeight: '700', color: Colors.text, textAlign: 'right' },
-  fusedBadge: { padding: Spacing.md, borderRadius: BorderRadius.md, alignItems: 'center' },
+  fusedBadge: { padding: Spacing.md, borderRadius: BorderRadius.md, alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
   fusedText: { color: '#FFF', fontSize: FontSize.lg, fontWeight: '800' },
   actionSource: { fontSize: FontSize.xs, color: Colors.textMuted, marginBottom: Spacing.sm },
   actionItem: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm, alignItems: 'flex-start' },
-  actionNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primary, color: '#FFF', fontSize: FontSize.xs, fontWeight: '700', textAlign: 'center', lineHeight: 24, overflow: 'hidden' },
+  actionNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primaryDark, color: '#FFF', fontSize: FontSize.xs, fontWeight: '700', textAlign: 'center', lineHeight: 24, overflow: 'hidden' },
   actionText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
-  pendingReview: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md, backgroundColor: '#FFFBEB', borderRadius: BorderRadius.sm },
+  pendingReview: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md, backgroundColor: '#FFFBEB', borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: '#FDE68A' },
   pendingText: { fontSize: FontSize.sm, color: Colors.warning, fontWeight: '500' },
 });

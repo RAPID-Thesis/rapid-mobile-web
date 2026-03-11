@@ -4,7 +4,7 @@ import { mockBuildings } from '../mock/buildings';
 
 function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
   return (
-    <div className={`bg-white rounded-xl p-6 border-l-4 ${color}`}>
+    <div className={`bg-white rounded-xl p-6 border border-slate-200 border-l-4 shadow-sm ${color}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-500 font-medium">{label}</p>
@@ -39,7 +39,8 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-slate-800 mb-6">Dashboard</h2>
+      <h2 className="text-2xl font-black text-slate-800">Dashboard</h2>
+      <p className="text-sm text-slate-500 mb-6">Operational view for FEMA P-154 and ATC-20 inspections.</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Assessments" value={total} color="border-blue-500" icon="📋" />
@@ -48,7 +49,7 @@ export default function DashboardPage() {
         <StatCard label="Reviewed" value={reviewed} color="border-green-500" icon="✓" />
       </div>
 
-      <div className="bg-white rounded-xl">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="p-4 border-b border-slate-200">
           <h3 className="font-bold text-slate-800">Recent Assessments</h3>
         </div>

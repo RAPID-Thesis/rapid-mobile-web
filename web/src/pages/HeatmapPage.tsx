@@ -36,7 +36,7 @@ export default function HeatmapPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">Damage Heatmap</h2>
+        <h2 className="text-2xl font-black text-slate-800">Damage Heatmap</h2>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-green-500" /> SAFE / Low</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-amber-500" /> RESTRICTED / Moderate</div>
@@ -44,7 +44,7 @@ export default function HeatmapPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl overflow-hidden" style={{ height: 'calc(100vh - 200px)' }}>
+      <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm" style={{ height: 'calc(100vh - 200px)' }}>
         <MapContainer center={center} zoom={15} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'

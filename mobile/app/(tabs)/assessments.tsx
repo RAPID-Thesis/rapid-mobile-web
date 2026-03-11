@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
 import { mockAssessments } from '../../mock/assessments';
 import { mockBuildings } from '../../mock/buildings';
@@ -33,6 +34,7 @@ function AssessmentCard({ item }: { item: Assessment }) {
     <TouchableOpacity
       style={styles.card}
       onPress={() => router.push(`/assessment/${item._id}`)}
+      activeOpacity={0.85}
     >
       <View style={styles.cardTop}>
         <View>
@@ -67,6 +69,9 @@ export default function AssessmentsScreen() {
   const sorted = [...mockAssessments].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+  const preEqCount = sorted.filter((a) => a.phase === 'pre-earthquake').length;
+  const postEqCount = sorted.filter((a) => a.phase === 'post-earthquake').length;
+  const urgentCount = sorted.filter((a) => a.priorityScore >= 80).length;
 
   return (
     <View style={styles.container}>
@@ -77,7 +82,56 @@ export default function AssessmentsScreen() {
         contentContainerStyle={styles.list}
         ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
         ListHeaderComponent={
-          <Text style={styles.header}>{sorted.length} assessments</Text>
+          <View>
+            <LinearGradient
+              colors={['#FFFFFF', '#F8FAFC']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.headerCard}
+            >
+              <View style={styles.headerTopRow}>
+                <View style={styles.headerInfo}>
+                  <Text style={styles.headerTitle}>Assessment Queue</Text>
+                  <Text style={styles.header}>{sorted.length} total records</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.headerAction}
+                  onPress={() => router.push('/assessment/new')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="add" size={16} color="#FFFFFF" />
+                  <Text style={styles.headerActionText}>New</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.summaryChips}>
+                <View style={styles.summaryChip}>
+                  <Text style={styles.summaryChipText}>Pre-EQ {preEqCount}</Text>
+                </View>
+                <View style={styles.summaryChip}>
+                  <Text style={styles.summaryChipText}>Post-EQ {postEqCount}</Text>
+                </View>
+                <View style={[styles.summaryChip, styles.summaryChipUrgent]}>
+                  <Text style={[styles.summaryChipText, styles.summaryChipUrgentText]}>Urgent {urgentCount}</Text>
+                </View>
+              </View>
+            </LinearGradient>
+            {sorted.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="clipboard-outline" size={36} color={Colors.textMuted} />
+                <Text style={styles.emptyTitle}>No assessments yet</Text>
+                <Text style={styles.emptyBody}>
+                  Start your first field record to build your assessment queue.
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyAction}
+                  onPress={() => router.push('/assessment/new')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.emptyActionText}>Start Assessment</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
         }
       />
 
@@ -94,11 +148,56 @@ export default function AssessmentsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   list: { padding: Spacing.md },
-  header: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
+  headerCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  headerTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
+  header: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerInfo: { flex: 1 },
+  headerAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primaryDark,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+  },
+  headerActionText: { color: '#FFFFFF', fontSize: FontSize.xs, fontWeight: '700' },
+  summaryChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.sm },
+  summaryChip: {
+    backgroundColor: Colors.surfaceSoft,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  summaryChipText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '600' },
+  summaryChipUrgent: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  summaryChipUrgentText: { color: Colors.error },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 7,
+    elevation: 2,
   },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   cardCode: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
@@ -109,6 +208,36 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   metaText: { fontSize: FontSize.xs, color: Colors.textSecondary },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
+  emptyState: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
+    backgroundColor: Colors.surface,
+    marginBottom: Spacing.md,
+  },
+  emptyTitle: {
+    color: Colors.text,
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    marginTop: Spacing.sm,
+  },
+  emptyBody: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: Spacing.md,
+  },
+  emptyAction: {
+    backgroundColor: Colors.primaryDark,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  emptyActionText: { color: '#FFFFFF', fontSize: FontSize.sm, fontWeight: '700' },
   fab: {
     position: 'absolute',
     bottom: Spacing.lg,
@@ -116,13 +245,13 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryDark,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowOpacity: 0.32,
+    shadowRadius: 8,
   },
 });

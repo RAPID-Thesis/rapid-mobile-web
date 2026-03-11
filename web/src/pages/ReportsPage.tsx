@@ -16,11 +16,11 @@ export default function ReportsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">Reports</h2>
+        <h2 className="text-2xl font-black text-slate-800">Reports</h2>
         <span className="text-sm text-slate-500">{reportable.length} reports available</span>
       </div>
 
-      <div className="bg-white rounded-xl overflow-hidden">
+      <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm">
         <table className="w-full">
           <thead>
             <tr className="text-left text-xs text-slate-500 uppercase tracking-wider bg-slate-50">
