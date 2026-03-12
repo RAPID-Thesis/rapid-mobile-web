@@ -3,15 +3,29 @@ from __future__ import annotations
 import contextlib
 import os
 import uuid
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from .models import Assessment, AssessmentImage, UPLOAD_DIR, get_db, init_db
-from .schemas import AssessmentRead, AssessmentSyncPayload
+from .schemas import (
+    AssessmentRead,
+    AssessmentSyncPayload,
+    AuthenticatedUser,
+    LoginRequest,
+    TokenResponse,
+)
+from .security import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+)
 from .services.ml_fusion_engine import process_assessment
 
 MAX_IMAGES = 4
@@ -30,6 +44,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+default_cors_origins = [
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",
+    "http://127.0.0.1:19006",
+]
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", ",".join(default_cors_origins)).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 async def save_upload_file(upload: UploadFile, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -39,6 +74,27 @@ async def save_upload_file(upload: UploadFile, destination: Path) -> None:
             buffer.write(chunk)
 
     await upload.close()
+
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+def login(credentials: LoginRequest):
+    user = authenticate_user(credentials.username, credentials.password)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(
+        data={"sub": user.username, "role": user.role, "lgu_code": user.lgu_code},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return TokenResponse(
+        access_token=access_token,
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=user,
+    )
 
 
 @app.post(
@@ -51,6 +107,7 @@ async def sync_assessment(
     assessment: str = Form(..., description="JSON-encoded assessment payload."),
     images: list[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
+    _: AuthenticatedUser = Depends(get_current_user),
 ):
     if len(images) > MAX_IMAGES:
         raise HTTPException(

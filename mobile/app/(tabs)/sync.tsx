@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Alert, View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
 import { mockSyncQueue } from '../../mock/assessments';
 import { SyncQueueItem, SyncStatus } from '../../types';
+import { syncAssessmentQueueItem } from '../../services/sync';
 
 function getSyncStatusStyle(status: SyncStatus): { icon: string; color: string; label: string } {
   switch (status) {
@@ -55,14 +56,15 @@ export default function SyncScreen() {
   const [isSyncingNow, setIsSyncingNow] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [retryingQueueId, setRetryingQueueId] = useState<string | null>(null);
+  const [queueItems, setQueueItems] = useState<SyncQueueItem[]>(mockSyncQueue);
 
-  const queuedCount = mockSyncQueue.filter((q) => q.status === 'queued').length;
-  const syncingCount = mockSyncQueue.filter((q) => q.status === 'syncing').length;
-  const failedCount = mockSyncQueue.filter((q) => q.status === 'failed').length;
-  const syncedCount = mockSyncQueue.filter((q) => q.status === 'synced').length;
+  const queuedCount = queueItems.filter((q) => q.status === 'queued').length;
+  const syncingCount = queueItems.filter((q) => q.status === 'syncing').length;
+  const failedCount = queueItems.filter((q) => q.status === 'failed').length;
+  const syncedCount = queueItems.filter((q) => q.status === 'synced').length;
   const pendingCount = queuedCount + syncingCount + failedCount;
-  const completionRate = mockSyncQueue.length
-    ? Math.round((syncedCount / mockSyncQueue.length) * 100)
+  const completionRate = queueItems.length
+    ? Math.round((syncedCount / queueItems.length) * 100)
     : 100;
   const healthMessage = useMemo(() => {
     if (pendingCount === 0) return 'Up to date';
@@ -70,21 +72,78 @@ export default function SyncScreen() {
     return `${pendingCount} item${pendingCount > 1 ? 's' : ''} pending`;
   }, [failedCount, pendingCount]);
 
-  const handleSyncNow = () => {
-    if (isSyncingNow) return;
-    setIsSyncingNow(true);
-    setTimeout(() => {
-      setIsSyncingNow(false);
-      setLastSyncedAt(new Date());
-    }, 900);
+  const updateQueueItemStatus = (queueId: string, status: SyncStatus) => {
+    const attemptedAt = new Date().toISOString();
+    setQueueItems((currentItems) =>
+      currentItems.map((item) =>
+        item.queueId === queueId
+          ? {
+              ...item,
+              status,
+              attempts: status === 'syncing' ? item.attempts : item.attempts + 1,
+              lastAttemptAt: attemptedAt,
+            }
+          : item
+      )
+    );
   };
 
-  const handleRetry = (queueId: string) => {
-    setRetryingQueueId(queueId);
-    setTimeout(() => {
-      setRetryingQueueId(null);
+  const handleSyncNow = async () => {
+    if (isSyncingNow) return;
+
+    const itemsToSync = queueItems.filter((item) => item.status === 'queued' || item.status === 'failed');
+    if (itemsToSync.length === 0) {
+      Alert.alert('Sync Queue', 'There are no queued assessments to sync right now.');
+      return;
+    }
+
+    setIsSyncingNow(true);
+
+    let hadSuccessfulSync = false;
+    for (const item of itemsToSync) {
+      updateQueueItemStatus(item.queueId, 'syncing');
+      try {
+        await syncAssessmentQueueItem(item);
+        updateQueueItemStatus(item.queueId, 'synced');
+        hadSuccessfulSync = true;
+      } catch (syncError) {
+        updateQueueItemStatus(item.queueId, 'failed');
+        Alert.alert(
+          'Sync Failed',
+          syncError instanceof Error ? syncError.message : 'Unable to sync an assessment.'
+        );
+      }
+    }
+
+    if (hadSuccessfulSync) {
       setLastSyncedAt(new Date());
-    }, 700);
+    }
+
+    setIsSyncingNow(false);
+  };
+
+  const handleRetry = async (queueId: string) => {
+    const queueItem = queueItems.find((item) => item.queueId === queueId);
+    if (!queueItem) {
+      return;
+    }
+
+    setRetryingQueueId(queueId);
+    updateQueueItemStatus(queueId, 'syncing');
+
+    try {
+      await syncAssessmentQueueItem(queueItem);
+      setRetryingQueueId(null);
+      updateQueueItemStatus(queueId, 'synced');
+      setLastSyncedAt(new Date());
+    } catch (syncError) {
+      setRetryingQueueId(null);
+      updateQueueItemStatus(queueId, 'failed');
+      Alert.alert(
+        'Retry Failed',
+        syncError instanceof Error ? syncError.message : 'Unable to retry this assessment.'
+      );
+    }
   };
 
   return (
@@ -144,7 +203,7 @@ export default function SyncScreen() {
       </View>
 
       <FlatList
-        data={mockSyncQueue}
+        data={queueItems}
         keyExtractor={(item) => item.queueId}
         renderItem={({ item }) => (
           <View>

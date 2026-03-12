@@ -27,6 +27,11 @@ export const WizardTheme = {
     lg: 24,
   },
   typography: {
+    fontFamily: {
+      body: 'Inter_400Regular',
+      medium: 'Inter_500Medium',
+      bold: 'Inter_700Bold',
+    },
     label: 16,
     body: 15,
     helper: 13,

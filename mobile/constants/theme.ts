@@ -45,6 +45,15 @@ export const FontSize = {
   title: 34,
 };
 
+export const Typography = {
+  fontFamily: {
+    body: 'Inter_400Regular',
+    medium: 'Inter_500Medium',
+    semibold: 'Inter_600SemiBold',
+    bold: 'Inter_700Bold',
+  },
+};
+
 export const BorderRadius = {
   sm: 6,
   md: 10,

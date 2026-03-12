@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   View,
-  Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -14,20 +13,15 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
-import {
-  useFonts,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-  Poppins_800ExtraBold,
-} from '@expo-google-fonts/poppins';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import Text from '../../components/CustomText';
+import { loginUser, saveUserToken } from '../../services/auth';
 
 const InterfaceTheme = {
   accent: Colors.primary,
   steel: '#334155',
 };
-const backgroundImage = require('../../assets/earthquake.jpg');
+const backgroundImage = require('../../assets/bumbum.png');
 const brandingImage = require('../../assets/bumbum.png');
 
 export default function LoginScreen() {
@@ -39,17 +33,6 @@ export default function LoginScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [fontsLoaded] = useFonts({
-    Poppins_500Medium,
-    Poppins_600SemiBold,
-    Poppins_700Bold,
-    Poppins_800ExtraBold,
-  });
-
-  const poppinsMedium = fontsLoaded ? { fontFamily: 'Poppins_500Medium' } : undefined;
-  const poppinsSemiBold = fontsLoaded ? { fontFamily: 'Poppins_600SemiBold' } : undefined;
-  const poppinsBold = fontsLoaded ? { fontFamily: 'Poppins_700Bold' } : undefined;
-  const poppinsExtraBold = fontsLoaded ? { fontFamily: 'Poppins_800ExtraBold' } : undefined;
 
   const canSubmit = useMemo(() => email.trim().length > 0 && password.length > 0, [email, password]);
 
@@ -65,7 +48,7 @@ export default function LoginScreen() {
     if (error) setError('');
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const normalizedEmail = email.trim();
     let hasError = false;
 
@@ -92,10 +75,17 @@ export default function LoginScreen() {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
+      const { access_token } = await loginUser(normalizedEmail, password);
+      await saveUserToken(access_token);
       setIsSubmitting(false);
       router.replace('/(tabs)');
-    }, 600);
+    } catch (loginError) {
+      setIsSubmitting(false);
+      setError(
+        loginError instanceof Error ? loginError.message : 'Unable to sign in. Please try again.'
+      );
+    }
   };
 
   return (
@@ -124,24 +114,24 @@ export default function LoginScreen() {
                 style={styles.cardLogo}
               />
               
-              <Text style={[styles.cardTitle, poppinsExtraBold]}>Welcome</Text>
+              <Text style={styles.cardTitle}>Welcome</Text>
 
-              <Text style={[styles.cardSubtitle, poppinsMedium]}>
+              <Text style={styles.cardSubtitle}>
                 Sign in to continue building assessments, risk reviews, and post-earthquake
                 inspections.
               </Text>
 
               {error ? (
                 <View style={styles.errorBox}>
-                  <Text style={[styles.error, poppinsSemiBold]}>{error}</Text>
+                  <Text style={styles.error}>{error}</Text>
                 </View>
               ) : null}
 
-              <Text style={[styles.label, poppinsSemiBold]}>Government Email Address</Text>
+              <Text style={styles.label}>Government Email Address</Text>
               <View style={styles.inputGroup}>
-                <Text style={[styles.fieldHint, poppinsMedium]}>you@lgu.gov.ph</Text>
+                <Text style={styles.fieldHint}>you@lgu.gov.ph</Text>
                 <TextInput
-                  style={[styles.input, poppinsMedium]}
+                  style={styles.input}
                   value={email}
                   onChangeText={handleEmailChange}
                   keyboardType="email-address"
@@ -150,15 +140,15 @@ export default function LoginScreen() {
                   autoComplete="email"
                   returnKeyType="next"
                 />
-                {emailError ? <Text style={[styles.fieldError, poppinsMedium]}>{emailError}</Text> : null}
+                {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
               </View>
 
-              <Text style={[styles.label, poppinsSemiBold]}>Password</Text>
+              <Text style={styles.label}>Password</Text>
               <View style={styles.inputGroup}>
-                <Text style={[styles.fieldHint, poppinsMedium]}>Enter password</Text>
+                <Text style={styles.fieldHint}>Enter password</Text>
                 <View style={styles.passwordRow}>
                   <TextInput
-                    style={[styles.input, styles.passwordInput, poppinsMedium]}
+                    style={[styles.input, styles.passwordInput]}
                     value={password}
                     onChangeText={handlePasswordChange}
                     secureTextEntry={!showPassword}
@@ -171,17 +161,17 @@ export default function LoginScreen() {
                     onPress={() => setShowPassword((prev) => !prev)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.passwordToggleText, poppinsSemiBold]}>
+                    <Text style={styles.passwordToggleText}>
                       {showPassword ? 'Hide' : 'Show'}
                     </Text>
                   </TouchableOpacity>
                 </View>
-                {passwordError ? <Text style={[styles.fieldError, poppinsMedium]}>{passwordError}</Text> : null}
+                {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
               </View>
 
               <View style={styles.inlineRow}>
-                <Text style={[styles.inlineText, poppinsMedium]}>Official LGU account required</Text>
-                <Text style={[styles.inlineTextAction, poppinsBold]}>Need help?</Text>
+                <Text style={styles.inlineText}>Official LGU account required</Text>
+                <Text style={styles.inlineTextAction}>Need help?</Text>
               </View>
 
               <TouchableOpacity
@@ -192,32 +182,32 @@ export default function LoginScreen() {
                 {isSubmitting ? (
                   <View style={styles.buttonLoading}>
                     <ActivityIndicator size="small" color="#FFFFFF" />
-                    <Text style={[styles.buttonText, poppinsExtraBold]}>Signing In...</Text>
+                    <Text style={styles.buttonText}>Signing In...</Text>
                   </View>
                 ) : (
-                  <Text style={[styles.buttonText, poppinsExtraBold]}>Sign In</Text>
+                  <Text style={styles.buttonText}>Sign In</Text>
                 )}
               </TouchableOpacity>
 
               <View style={styles.metaRow}>
                 <View style={styles.metaBadge}>
-                  <Text style={[styles.metaBadgeText, poppinsSemiBold]}>Assessment</Text>
+                  <Text style={styles.metaBadgeText}>Assessment</Text>
                 </View>
                 <View style={styles.metaBadge}>
-                  <Text style={[styles.metaBadgeText, poppinsSemiBold]}>Prediction</Text>
+                  <Text style={styles.metaBadgeText}>Prediction</Text>
                 </View>
               </View>
 
               <View style={styles.securityBox}>
-                <Text style={[styles.securityTitle, poppinsBold]}>Security Advisory</Text>
-                <Text style={[styles.notice, poppinsMedium]}>
+                <Text style={styles.securityTitle}>Security Advisory</Text>
+                <Text style={styles.notice}>
                   Access is limited to authorized personnel. System activity may be logged and
                   monitored for operational and compliance purposes.
                 </Text>
               </View>
             </View>
 
-            <Text style={[styles.footer, poppinsBold]}>FEMA P-154 • ATC-20 • Activity May Be Monitored</Text>
+            <Text style={styles.footer}>FEMA P-154 • ATC-20 • Activity May Be Monitored</Text>
           </View>
         </View>
       </KeyboardAvoidingView>

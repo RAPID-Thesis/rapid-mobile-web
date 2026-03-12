@@ -4,7 +4,6 @@ import {
   Pressable,
   StyleSheet,
   Switch,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
@@ -12,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { MinTouchTarget } from '../../constants/theme';
 import { WizardTheme } from './wizardTheme';
+import Text from '../../components/CustomText';
 
 export type PrimaryMaterialOption =
   | 'Concrete Hollow Block (CHB)'

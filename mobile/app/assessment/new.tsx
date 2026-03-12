@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -17,6 +16,7 @@ import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../c
 import { ImageAngle, AssessmentPhase, BuildingUse } from '../../types';
 import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
 import { WizardTheme } from './wizardTheme';
+import Text from '../../components/CustomText';
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
