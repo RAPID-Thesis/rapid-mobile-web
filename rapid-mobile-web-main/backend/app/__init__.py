@@ -1,1 +1,0 @@
-# RADAR backend application package.

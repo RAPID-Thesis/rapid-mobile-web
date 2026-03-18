@@ -1,26 +1,41 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mockAssessments } from '../mock/assessments';
-import { mockBuildings } from '../mock/buildings';
-import type { AssessmentPhase, AssessmentStatus } from '../types';
+import { supabase } from '../lib/supabase';
+import type { Assessment, AssessmentPhase, AssessmentStatus, Building } from '../types';
 
 export default function AssessmentsPage() {
   const navigate = useNavigate();
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [loading, setLoading] = useState(true);
   const [phaseFilter, setPhaseFilter] = useState<AssessmentPhase | ''>('');
   const [statusFilter, setStatusFilter] = useState<AssessmentStatus | ''>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<'date' | 'priority'>('date');
 
+  useEffect(() => {
+    async function load() {
+      const [aRes, bRes] = await Promise.all([
+        supabase.from('assessments').select('*').order('created_at', { ascending: false }),
+        supabase.from('buildings').select('*'),
+      ]);
+      setAssessments((aRes.data as Assessment[]) ?? []);
+      setBuildings((bRes.data as Building[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
   const filtered = useMemo(() => {
-    let result = [...mockAssessments];
+    let result = [...assessments];
     if (phaseFilter) result = result.filter(a => a.phase === phaseFilter);
     if (statusFilter) result = result.filter(a => a.status === statusFilter);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(a => {
-        const building = mockBuildings.find(b => b._id === a.buildingId);
+        const building = buildings.find(b => b.id === a.building_id);
         return (
-          building?.buildingCode.toLowerCase().includes(q) ||
+          building?.building_code.toLowerCase().includes(q) ||
           building?.address.toLowerCase().includes(q) ||
           building?.barangay.toLowerCase().includes(q)
         );
@@ -28,11 +43,11 @@ export default function AssessmentsPage() {
     }
     result.sort((a, b) =>
       sortField === 'priority'
-        ? b.priorityScore - a.priorityScore
-        : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ? b.priority_score - a.priority_score
+        : new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
     return result;
-  }, [phaseFilter, statusFilter, searchQuery, sortField]);
+  }, [assessments, buildings, phaseFilter, statusFilter, searchQuery, sortField]);
 
   function getClassBadge(label: string) {
     const lower = label.toLowerCase();
@@ -51,14 +66,21 @@ export default function AssessmentsPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-black text-slate-800">Assessments</h2>
-        <span className="text-sm text-slate-500">{filtered.length} of {mockAssessments.length} shown</span>
+        <span className="text-sm text-slate-500">{filtered.length} of {assessments.length} shown</span>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center border border-slate-200 shadow-sm">
         <input
           type="text"
@@ -97,7 +119,6 @@ export default function AssessmentsPage() {
         </select>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm">
         <table className="w-full">
           <thead>
@@ -114,21 +135,21 @@ export default function AssessmentsPage() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.map(a => {
-              const building = mockBuildings.find(b => b._id === a.buildingId);
-              const label = a.aiResult?.fusedClassification.label ?? 'N/A';
-              const confidence = a.aiResult?.fusedClassification.confidence;
+              const building = buildings.find(b => b.id === a.building_id);
+              const label = a.ai_fused_label ?? 'Pending';
+              const confidence = a.ai_fused_confidence;
 
               return (
                 <tr
-                  key={a._id}
+                  key={a.id}
                   className="hover:bg-slate-50 cursor-pointer transition-colors"
-                  onClick={() => navigate(`/assessments/${a._id}`)}
+                  onClick={() => navigate(`/assessments/${a.id}`)}
                 >
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-sm text-slate-800">{building?.buildingCode}</p>
+                    <p className="font-semibold text-sm text-slate-800">{building?.building_code ?? '—'}</p>
                     <p className="text-xs text-slate-500 truncate max-w-[180px]">{building?.address}</p>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">{building?.barangay}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600">{building?.barangay ?? '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded ${
                       a.phase === 'pre-earthquake' ? 'bg-blue-50 text-blue-700' : 'bg-orange-50 text-orange-700'
@@ -153,9 +174,9 @@ export default function AssessmentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`font-mono text-sm font-bold ${
-                      a.priorityScore >= 80 ? 'text-red-600' : a.priorityScore >= 50 ? 'text-amber-600' : 'text-green-600'
+                      a.priority_score >= 80 ? 'text-red-600' : a.priority_score >= 50 ? 'text-amber-600' : 'text-green-600'
                     }`}>
-                      {a.priorityScore}
+                      {a.priority_score}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -164,7 +185,7 @@ export default function AssessmentsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">
-                    {new Date(a.createdAt).toLocaleDateString()}
+                    {new Date(a.created_at).toLocaleDateString()}
                   </td>
                 </tr>
               );
@@ -172,7 +193,10 @@ export default function AssessmentsPage() {
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div className="text-center py-12 text-slate-500">No assessments match your filters.</div>
+          <div className="text-center py-12 text-slate-400">
+            <p className="text-lg font-semibold mb-1">No assessments found</p>
+            <p className="text-sm">Assessments will appear here once submitted from the mobile app.</p>
+          </div>
         )}
       </div>
     </div>

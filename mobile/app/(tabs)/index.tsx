@@ -1,14 +1,15 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
-import { mockAssessments, mockSyncQueue } from '../../mock/assessments';
-import { currentUser } from '../../mock/users';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../services/supabase';
 
 function StatCard({ icon, label, value, color }: { icon: string; label: string; value: number; color: string }) {
   return (
-    <View style={[styles.statCard, { borderLeftColor: color }]}>  
+    <View style={[styles.statCard, { borderLeftColor: color }]}>
       <View style={[styles.statIconWrap, { backgroundColor: `${color}22` }]}>
         <Ionicons name={icon as any} size={20} color={color} />
       </View>
@@ -19,16 +20,28 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 }
 
 export default function HomeScreen() {
-  const totalAssessments = mockAssessments.length;
-  const pendingReview = mockAssessments.filter((a) => a.status === 'pending-review').length;
-  const highRisk = mockAssessments.filter(
-    (a) => a.aiResult?.fusedClassification.label === 'high' || a.aiResult?.fusedClassification.label === 'UNSAFE'
-  ).length;
-  const pendingSync = mockSyncQueue.filter((q) => q.status !== 'synced').length;
+  const { profile } = useAuth();
+  const [stats, setStats] = useState({ total: 0, pending: 0, highRisk: 0, toSync: 0 });
+  const [loading, setLoading] = useState(true);
 
-  const recentAssessments = [...mockAssessments].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  ).slice(0, 3);
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from('assessments').select('status, ai_fused_label');
+      const list = data ?? [];
+      setStats({
+        total: list.length,
+        pending: list.filter(a => a.status === 'pending-review').length,
+        highRisk: list.filter(a => a.ai_fused_label === 'high' || a.ai_fused_label === 'UNSAFE').length,
+        toSync: list.filter(a => a.status === 'pending-sync').length,
+      });
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const displayName = profile?.full_name || profile?.email || 'Inspector';
+  const roleLabel = profile?.role?.toUpperCase() || 'INSPECTOR';
+  const lguCode = profile?.lgu_code || '';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -39,8 +52,8 @@ export default function HomeScreen() {
         style={styles.heroCard}
       >
         <Text style={styles.heroEyebrow}>RAPID FIELD OPERATIONS</Text>
-        <Text style={styles.greeting}>Welcome, {currentUser.fullName}</Text>
-        <Text style={styles.role}>{currentUser.role.toUpperCase()} &bull; {currentUser.lguCode}</Text>
+        <Text style={styles.greeting}>Welcome, {displayName}</Text>
+        <Text style={styles.role}>{roleLabel}{lguCode ? ` \u2022 ${lguCode}` : ''}</Text>
         <View style={styles.heroPills}>
           <View style={styles.heroPill}>
             <Text style={styles.heroPillText}>Offline-First Capture</Text>
@@ -51,14 +64,20 @@ export default function HomeScreen() {
         </View>
       </LinearGradient>
 
-      <View style={styles.statsRow}>
-        <StatCard icon="clipboard" label="Total" value={totalAssessments} color={Colors.primary} />
-        <StatCard icon="time" label="Pending" value={pendingReview} color={Colors.warning} />
-      </View>
-      <View style={styles.statsRow}>
-        <StatCard icon="alert-circle" label="High Risk" value={highRisk} color={Colors.error} />
-        <StatCard icon="cloud-upload" label="To Sync" value={pendingSync} color={Colors.statusPendingSync} />
-      </View>
+      {loading ? (
+        <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: Spacing.xl }} />
+      ) : (
+        <>
+          <View style={styles.statsRow}>
+            <StatCard icon="clipboard" label="Total" value={stats.total} color={Colors.primary} />
+            <StatCard icon="time" label="Pending" value={stats.pending} color={Colors.warning} />
+          </View>
+          <View style={styles.statsRow}>
+            <StatCard icon="alert-circle" label="High Risk" value={stats.highRisk} color={Colors.error} />
+            <StatCard icon="cloud-upload" label="To Sync" value={stats.toSync} color={Colors.statusPendingSync} />
+          </View>
+        </>
+      )}
 
       <TouchableOpacity style={styles.newButton} onPress={() => router.push('/assessment/new')}>
         <LinearGradient
@@ -71,35 +90,6 @@ export default function HomeScreen() {
           <Text style={styles.newButtonText}>New Assessment</Text>
         </LinearGradient>
       </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>Recent Assessments</Text>
-      {recentAssessments.map((a) => {
-        const label = a.aiResult?.fusedClassification.label ?? 'N/A';
-        const isUnsafe = label === 'UNSAFE' || label === 'high';
-        const isRestricted = label === 'RESTRICTED' || label === 'moderate';
-        const badgeColor = isUnsafe ? Colors.unsafe : isRestricted ? Colors.restricted : Colors.safe;
-
-        return (
-          <TouchableOpacity
-            key={a._id}
-            style={styles.recentCard}
-            onPress={() => router.push(`/assessment/${a._id}`)}
-          >
-            <View style={styles.recentCardHeader}>
-              <Text style={styles.recentCardTitle}>
-                {a.buildingId}
-              </Text>
-              <View style={[styles.badge, { backgroundColor: badgeColor }]}>
-                <Text style={styles.badgeText}>{label.toUpperCase()}</Text>
-              </View>
-            </View>
-            <Text style={styles.recentCardMeta}>
-              {a.phase === 'pre-earthquake' ? 'Pre-EQ' : 'Post-EQ'} &bull;{' '}
-              {new Date(a.createdAt).toLocaleDateString()}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
     </ScrollView>
   );
 }
@@ -175,23 +165,4 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   newButtonText: { color: '#FFFFFF', fontSize: FontSize.lg, fontWeight: '700' },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.text, marginBottom: Spacing.sm, marginTop: Spacing.sm },
-  recentCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  recentCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  recentCardTitle: { fontSize: FontSize.md, fontWeight: '600', color: Colors.text },
-  badge: { paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm },
-  badgeText: { color: '#FFFFFF', fontSize: FontSize.xs, fontWeight: '700' },
-  recentCardMeta: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
 });

@@ -1,10 +1,28 @@
-import { mockAssessments } from '../mock/assessments';
-import { mockBuildings } from '../mock/buildings';
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import type { Assessment, Building } from '../types';
 
 export default function ReportsPage() {
-  const reportable = mockAssessments.filter(
-    a => a.status === 'reviewed' || a.status === 'report-generated'
-  );
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const [aRes, bRes] = await Promise.all([
+        supabase
+          .from('assessments')
+          .select('*')
+          .in('status', ['reviewed', 'report-generated'])
+          .order('created_at', { ascending: false }),
+        supabase.from('buildings').select('*'),
+      ]);
+      setAssessments((aRes.data as Assessment[]) ?? []);
+      setBuildings((bRes.data as Building[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, []);
 
   function getClassBadge(label: string) {
     const lower = label.toLowerCase();
@@ -13,11 +31,19 @@ export default function ReportsPage() {
     return 'bg-green-100 text-green-700';
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-black text-slate-800">Reports</h2>
-        <span className="text-sm text-slate-500">{reportable.length} reports available</span>
+        <span className="text-sm text-slate-500">{assessments.length} reports available</span>
       </div>
 
       <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm">
@@ -27,21 +53,21 @@ export default function ReportsPage() {
               <th className="px-4 py-3">Building</th>
               <th className="px-4 py-3">Phase</th>
               <th className="px-4 py-3">Classification</th>
-              <th className="px-4 py-3">Reviewed By</th>
+              <th className="px-4 py-3">Reviewed</th>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {reportable.map(a => {
-              const building = mockBuildings.find(b => b._id === a.buildingId);
-              const label = a.engineerReview.overrideClassification ?? a.aiResult?.fusedClassification.label ?? 'N/A';
+            {assessments.map(a => {
+              const building = buildings.find(b => b.id === a.building_id);
+              const label = a.override_classification ?? a.ai_fused_label ?? 'N/A';
               const isGenerated = a.status === 'report-generated';
 
               return (
-                <tr key={a._id} className="hover:bg-slate-50">
+                <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-sm text-slate-800">{building?.buildingCode}</p>
+                    <p className="font-semibold text-sm text-slate-800">{building?.building_code ?? '—'}</p>
                     <p className="text-xs text-slate-500">{building?.address}</p>
                   </td>
                   <td className="px-4 py-3 text-sm">
@@ -53,12 +79,12 @@ export default function ReportsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-600">
-                    {a.engineerReview.reviewedAt
-                      ? new Date(a.engineerReview.reviewedAt).toLocaleDateString()
+                    {a.reviewed_at
+                      ? new Date(a.reviewed_at).toLocaleDateString()
                       : '—'}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">
-                    {new Date(a.createdAt).toLocaleDateString()}
+                    {new Date(a.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
@@ -78,8 +104,11 @@ export default function ReportsPage() {
             })}
           </tbody>
         </table>
-        {reportable.length === 0 && (
-          <div className="text-center py-12 text-slate-500">No reviewed assessments available for reporting.</div>
+        {assessments.length === 0 && (
+          <div className="text-center py-12 text-slate-400">
+            <p className="text-lg font-semibold mb-1">No reports available</p>
+            <p className="text-sm">Reports will appear here once assessments have been reviewed by an engineer.</p>
+          </div>
         )}
       </div>
     </div>

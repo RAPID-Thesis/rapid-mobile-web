@@ -1,65 +1,84 @@
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import { supabase } from './supabase';
 
-import { buildApiUrl, parseApiError } from './api';
-
-const TOKEN_STORAGE_KEY = 'userToken';
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  role: 'admin' | 'engineer' | 'drrmo' | 'inspector';
+  lgu_code: string;
+  avatar_url: string | null;
+}
 
 export interface LoginResponse {
   access_token: string;
-  token_type: string;
-  expires_in: number;
-  user: {
-    username: string;
-    full_name: string;
-    role: string;
-    lgu_code: string;
+  user: UserProfile;
+}
+
+export async function loginUser(
+  email: string,
+  password: string
+): Promise<LoginResponse> {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) throw new Error(error.message);
+  if (!data.session || !data.user) throw new Error('Login failed.');
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', data.user.id)
+    .single();
+
+  return {
+    access_token: data.session.access_token,
+    user: {
+      id: data.user.id,
+      email: data.user.email ?? email,
+      full_name: profile?.full_name ?? '',
+      role: profile?.role ?? 'inspector',
+      lgu_code: profile?.lgu_code ?? '',
+      avatar_url: profile?.avatar_url ?? null,
+    },
   };
 }
 
-function isWebStorageAvailable(): boolean {
-  return Platform.OS === 'web' && typeof window !== 'undefined' && !!window.localStorage;
+export async function logoutUser(): Promise<void> {
+  await supabase.auth.signOut();
 }
 
-export async function saveUserToken(token: string): Promise<void> {
-  if (isWebStorageAvailable()) {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    return;
-  }
-
-  await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, token);
+export async function getSession() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session;
 }
 
 export async function getUserToken(): Promise<string | null> {
-  if (isWebStorageAvailable()) {
-    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
-  }
-
-  return SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
+  const session = await getSession();
+  return session?.access_token ?? null;
 }
 
-export async function deleteUserToken(): Promise<void> {
-  if (isWebStorageAvailable()) {
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-    return;
-  }
+export async function getCurrentProfile(): Promise<UserProfile | null> {
+  const session = await getSession();
+  if (!session?.user) return null;
 
-  await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
-}
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', session.user.id)
+    .single();
 
-export async function loginUser(username: string, password: string): Promise<LoginResponse> {
-  const response = await fetch(buildApiUrl('/api/auth/login'), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ username, password }),
-  });
+  if (!profile) return null;
 
-  if (!response.ok) {
-    throw new Error(await parseApiError(response, 'Unable to sign in right now.'));
-  }
-
-  return (await response.json()) as LoginResponse;
+  return {
+    id: session.user.id,
+    email: session.user.email ?? '',
+    full_name: profile.full_name,
+    role: profile.role,
+    lgu_code: profile.lgu_code,
+    avatar_url: profile.avatar_url,
+  };
 }

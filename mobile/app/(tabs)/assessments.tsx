@@ -1,11 +1,27 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
-import { mockAssessments } from '../../mock/assessments';
-import { mockBuildings } from '../../mock/buildings';
-import { Assessment } from '../../types';
+import { supabase } from '../../services/supabase';
+
+interface AssessmentRow {
+  id: string;
+  building_id: string;
+  phase: string;
+  status: string;
+  ai_fused_label: string | null;
+  ai_fused_confidence: number | null;
+  priority_score: number;
+  created_at: string;
+}
+
+interface BuildingRow {
+  id: string;
+  building_code: string;
+  address: string;
+}
 
 function getClassificationColor(label: string): string {
   const lower = label.toLowerCase();
@@ -24,23 +40,23 @@ function getStatusInfo(status: string): { label: string; color: string } {
   }
 }
 
-function AssessmentCard({ item }: { item: Assessment }) {
-  const building = mockBuildings.find((b) => b._id === item.buildingId);
-  const classification = item.aiResult?.fusedClassification.label ?? 'N/A';
-  const confidence = item.aiResult?.fusedClassification.confidence;
+function AssessmentCard({ item, buildings }: { item: AssessmentRow; buildings: BuildingRow[] }) {
+  const building = buildings.find((b) => b.id === item.building_id);
+  const classification = item.ai_fused_label ?? 'Pending';
+  const confidence = item.ai_fused_confidence;
   const statusInfo = getStatusInfo(item.status);
 
   return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push(`/assessment/${item._id}`)}
+      onPress={() => router.push(`/assessment/${item.id}`)}
       activeOpacity={0.85}
     >
       <View style={styles.cardTop}>
         <View>
-          <Text style={styles.cardCode}>{building?.buildingCode ?? item.buildingId}</Text>
+          <Text style={styles.cardCode}>{building?.building_code ?? '—'}</Text>
           <Text style={styles.cardAddress} numberOfLines={1}>
-            {building?.address ?? 'Unknown'}
+            {building?.address ?? '—'}
           </Text>
         </View>
         <View style={[styles.classBadge, { backgroundColor: getClassificationColor(classification) }]}>
@@ -66,19 +82,33 @@ function AssessmentCard({ item }: { item: Assessment }) {
 }
 
 export default function AssessmentsScreen() {
-  const sorted = [...mockAssessments].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-  const preEqCount = sorted.filter((a) => a.phase === 'pre-earthquake').length;
-  const postEqCount = sorted.filter((a) => a.phase === 'post-earthquake').length;
-  const urgentCount = sorted.filter((a) => a.priorityScore >= 80).length;
+  const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
+  const [buildings, setBuildings] = useState<BuildingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const [aRes, bRes] = await Promise.all([
+        supabase.from('assessments').select('id, building_id, phase, status, ai_fused_label, ai_fused_confidence, priority_score, created_at').order('created_at', { ascending: false }),
+        supabase.from('buildings').select('id, building_code, address'),
+      ]);
+      setAssessments((aRes.data as AssessmentRow[]) ?? []);
+      setBuildings((bRes.data as BuildingRow[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const preEqCount = assessments.filter((a) => a.phase === 'pre-earthquake').length;
+  const postEqCount = assessments.filter((a) => a.phase === 'post-earthquake').length;
+  const urgentCount = assessments.filter((a) => a.priority_score >= 80).length;
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={sorted}
-        keyExtractor={(item) => item._id}
-        renderItem={({ item }) => <AssessmentCard item={item} />}
+        data={assessments}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <AssessmentCard item={item} buildings={buildings} />}
         contentContainerStyle={styles.list}
         ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
         ListHeaderComponent={
@@ -92,7 +122,7 @@ export default function AssessmentsScreen() {
               <View style={styles.headerTopRow}>
                 <View style={styles.headerInfo}>
                   <Text style={styles.headerTitle}>Assessment Queue</Text>
-                  <Text style={styles.header}>{sorted.length} total records</Text>
+                  <Text style={styles.header}>{assessments.length} total records</Text>
                 </View>
                 <TouchableOpacity
                   style={styles.headerAction}
@@ -103,19 +133,25 @@ export default function AssessmentsScreen() {
                   <Text style={styles.headerActionText}>New</Text>
                 </TouchableOpacity>
               </View>
-              <View style={styles.summaryChips}>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryChipText}>Pre-EQ {preEqCount}</Text>
+              {assessments.length > 0 && (
+                <View style={styles.summaryChips}>
+                  <View style={styles.summaryChip}>
+                    <Text style={styles.summaryChipText}>Pre-EQ {preEqCount}</Text>
+                  </View>
+                  <View style={styles.summaryChip}>
+                    <Text style={styles.summaryChipText}>Post-EQ {postEqCount}</Text>
+                  </View>
+                  {urgentCount > 0 && (
+                    <View style={[styles.summaryChip, styles.summaryChipUrgent]}>
+                      <Text style={[styles.summaryChipText, styles.summaryChipUrgentText]}>Urgent {urgentCount}</Text>
+                    </View>
+                  )}
                 </View>
-                <View style={styles.summaryChip}>
-                  <Text style={styles.summaryChipText}>Post-EQ {postEqCount}</Text>
-                </View>
-                <View style={[styles.summaryChip, styles.summaryChipUrgent]}>
-                  <Text style={[styles.summaryChipText, styles.summaryChipUrgentText]}>Urgent {urgentCount}</Text>
-                </View>
-              </View>
+              )}
             </LinearGradient>
-            {sorted.length === 0 ? (
+            {loading ? (
+              <ActivityIndicator size="large" color={Colors.primary} style={{ marginVertical: Spacing.xl }} />
+            ) : assessments.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="clipboard-outline" size={36} color={Colors.textMuted} />
                 <Text style={styles.emptyTitle}>No assessments yet</Text>

@@ -1,101 +1,25 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
 
 from .schemas import AuthenticatedUser
+from .supabase_client import get_supabase_admin
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BASE_DIR / ".env")
 
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-
-if not SECRET_KEY:
-    raise RuntimeError("JWT_SECRET_KEY must be set in backend/.env before starting the API.")
-
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
-
-
-def _build_dummy_users() -> dict[str, dict[str, str]]:
-    demo_users = [
-        {
-            "username": "inspector@lgu.gov.ph",
-            "password": "RadarSecure123!",
-            "full_name": "RADAR Field Inspector",
-            "role": "inspector",
-            "lgu_code": "LGU-BATANGAS",
-        },
-        {
-            "username": "drrmo@lgu.gov.ph",
-            "password": "RadarSecure456!",
-            "full_name": "RADAR DRRMO Officer",
-            "role": "drrmo",
-            "lgu_code": "LGU-BATANGAS",
-        },
-    ]
-
-    return {
-        user["username"]: {
-            "username": user["username"],
-            "full_name": user["full_name"],
-            "role": user["role"],
-            "lgu_code": user["lgu_code"],
-            "password_hash": pwd_context.hash(user["password"]),
-        }
-        for user in demo_users
-    }
-
-
-_DUMMY_USERS = _build_dummy_users()
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_user_by_username(username: str) -> AuthenticatedUser | None:
-    user = _DUMMY_USERS.get(username)
-    if user is None:
-        return None
-
-    return AuthenticatedUser(
-        username=user["username"],
-        full_name=user["full_name"],
-        role=user["role"],
-        lgu_code=user["lgu_code"],
-    )
-
-
-def authenticate_user(username: str, password: str) -> AuthenticatedUser | None:
-    user = _DUMMY_USERS.get(username)
-    if user is None or not verify_password(password, user["password_hash"]):
-        return None
-
-    return get_user_by_username(username)
-
-
-def create_access_token(data: dict[str, str], expires_delta: timedelta | None = None) -> str:
-    expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    to_encode = data.copy()
-    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> AuthenticatedUser:
+    """Validate Supabase JWT and return the authenticated user profile."""
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -103,29 +27,61 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    token = credentials.credentials
+    supabase = get_supabase_admin()
+
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-    except jwt.InvalidTokenError as exc:
+        user_response = supabase.auth.get_user(token)
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    username = payload.get("sub")
-    if not isinstance(username, str) or not username:
+    if user_response is None or user_response.user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload.",
+            detail="Invalid or expired token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    current_user = get_user_by_username(username)
-    if current_user is None:
+    su_user = user_response.user
+
+    profile_resp = (
+        supabase.table("profiles")
+        .select("*")
+        .eq("id", str(su_user.id))
+        .single()
+        .execute()
+    )
+
+    if not profile_resp.data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User referenced by token no longer exists.",
+            detail="User profile not found.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return current_user
+    profile = profile_resp.data
+    return AuthenticatedUser(
+        id=su_user.id,
+        email=profile["email"],
+        full_name=profile["full_name"],
+        role=profile["role"],
+        lgu_code=profile["lgu_code"],
+    )
+
+
+def require_roles(*allowed_roles: str):
+    """Dependency factory that checks if the user has one of the allowed roles."""
+
+    def checker(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+        if user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Role '{user.role}' is not authorized for this action.",
+            )
+        return user
+
+    return checker

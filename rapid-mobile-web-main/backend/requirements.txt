@@ -1,8 +1,0 @@
-fastapi
-passlib
-psycopg[binary]
-python-dotenv
-python-multipart
-sqlalchemy
-supabase
-uvicorn

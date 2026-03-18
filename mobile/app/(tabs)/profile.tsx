@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
-import { currentUser } from '../../mock/users';
+import { useAuth } from '../../context/AuthContext';
 
 function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
@@ -18,7 +18,22 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
 }
 
 export default function ProfileScreen() {
-  const roleLabel = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+  const { profile, signOut } = useAuth();
+
+  const displayName = profile?.full_name || profile?.email || 'User';
+  const roleLabel = profile?.role
+    ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+    : 'Inspector';
+  const initials = displayName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .slice(0, 2);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace('/(auth)/login');
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -30,11 +45,9 @@ export default function ProfileScreen() {
       >
         <View style={styles.avatarGlow} />
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {currentUser.fullName.split(' ').map((n) => n[0]).join('')}
-          </Text>
+          <Text style={styles.avatarText}>{initials}</Text>
         </View>
-        <Text style={styles.name}>{currentUser.fullName}</Text>
+        <Text style={styles.name}>{displayName}</Text>
         <View style={styles.roleBadge}>
           <Text style={styles.roleText}>{roleLabel}</Text>
         </View>
@@ -42,9 +55,8 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account Information</Text>
-        <InfoRow icon="mail" label="Email" value={currentUser.email} />
-        <InfoRow icon="business" label="LGU Code" value={currentUser.lguCode} />
-        <InfoRow icon="calendar" label="Joined" value={new Date(currentUser.createdAt).toLocaleDateString()} />
+        <InfoRow icon="mail" label="Email" value={profile?.email || '—'} />
+        <InfoRow icon="business" label="LGU Code" value={profile?.lgu_code || '—'} />
       </View>
 
       <View style={styles.section}>
@@ -53,10 +65,7 @@ export default function ProfileScreen() {
         <InfoRow icon="document-text" label="Frameworks" value="FEMA P-154 / ATC-20" />
       </View>
 
-      <TouchableOpacity
-        style={styles.logoutButton}
-        onPress={() => router.replace('/(auth)/login')}
-      >
+      <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
         <Ionicons name="log-out" size={20} color={Colors.error} />
         <Text style={styles.logoutText}>Sign Out</Text>
       </TouchableOpacity>

@@ -1,16 +1,31 @@
-import { NavLink } from 'react-router-dom';
-import { currentUser } from '../../mock/users';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
   { to: '/assessments', label: 'Assessments', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
   { to: '/heatmap', label: 'Heatmap', icon: 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7' },
   { to: '/reports', label: 'Reports', icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
-  { to: '/users', label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m3 5.197V21' },
+  { to: '/users', label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m3 5.197V21', roles: ['admin'] },
 ];
 
 export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const roleLabel = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+  const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const displayName = profile?.full_name || profile?.email || 'User';
+  const roleLabel = profile?.role
+    ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+    : '';
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.roles || (profile && item.roles.includes(profile.role))
+  );
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   return (
     <aside className={`bg-slate-950 text-white flex flex-col transition-all duration-200 ${collapsed ? 'w-16' : 'w-64'}`}>
@@ -29,7 +44,7 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
       </div>
 
       <nav className="flex-1 py-4">
-        {NAV_ITEMS.map((item) => (
+        {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -52,13 +67,19 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
         <div className="border-t border-slate-800 p-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold">
-              {currentUser.fullName.split(' ').map(n => n[0]).join('')}
+              {displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{currentUser.fullName}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium truncate">{displayName}</p>
               <p className="text-xs text-slate-400">{roleLabel}</p>
             </div>
           </div>
+          <button
+            onClick={handleSignOut}
+            className="mt-3 w-full text-xs text-slate-400 hover:text-white py-2 px-3 rounded-lg hover:bg-slate-800 transition-colors text-left"
+          >
+            Sign Out
+          </button>
         </div>
       )}
     </aside>

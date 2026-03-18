@@ -9,92 +9,73 @@ export type RiskLevel = 'low' | 'moderate' | 'high';
 export type DamageClass = 'SAFE' | 'RESTRICTED' | 'UNSAFE';
 
 export interface User {
-  _id: string;
+  id: string;
   email: string;
-  fullName: string;
+  full_name: string;
   role: UserRole;
-  lguCode: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface GeoPoint {
-  type: 'Point';
-  coordinates: [number, number]; // [longitude, latitude]
+  lgu_code: string;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Building {
-  _id: string;
-  buildingCode: string;
+  id: string;
+  building_code: string;
   address: string;
   barangay: string;
   municipality: string;
-  location: GeoPoint;
-  buildingUse: BuildingUse;
-  numberOfStories: number;
-  yearBuilt: number;
-  structuralSystem: string;
-  foundationType: string;
-  soilClassification: SoilClass;
-  distanceToFaultKm: number;
-  previousRetrofit: boolean;
-  createdAt: string;
-  updatedAt: string;
+  longitude: number;
+  latitude: number;
+  building_use: BuildingUse;
+  number_of_stories: number;
+  year_built: number | null;
+  structural_system: string | null;
+  foundation_type: string | null;
+  soil_classification: SoilClass | null;
+  distance_to_fault_km: number | null;
+  previous_retrofit: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AssessmentImage {
-  url: string;
-  angle: ImageAngle;
-  capturedAt: string;
-}
-
-export interface StructuralData {
-  material: string;
-  condition: string;
-  irregularities: string[];
-  occupancyAtTime: number;
-}
-
-export interface AIClassificationResult {
-  label: string;
-  confidence: number;
-  probabilities: Record<string, number>;
-}
-
-export interface AIResult {
-  imageClassification: AIClassificationResult;
-  tabularClassification: AIClassificationResult & { featureImportance: Record<string, number> };
-  fusedClassification: { label: string; confidence: number };
-  fusionWeights: { image: number; tabular: number };
-}
-
-export interface ActionPlan {
-  recommendations: string[];
-  generatedBy: 'gemini' | 'template-fallback';
-  generatedAt: string;
-}
-
-export interface EngineerReview {
-  reviewedBy: string | null;
-  overrideClassification: string | null;
-  justification: string | null;
-  reviewedAt: string | null;
+  id: string;
+  storage_path: string;
+  original_filename: string;
+  angle: ImageAngle | null;
+  captured_at: string | null;
+  created_at: string;
 }
 
 export interface Assessment {
-  _id: string;
-  buildingId: string;
-  inspectorId: string;
+  id: string;
+  building_id: string;
+  inspector_id: string;
   phase: AssessmentPhase;
-  images: AssessmentImage[];
-  structuralData: StructuralData;
-  aiResult: AIResult | null;
-  actionPlan: ActionPlan | null;
-  engineerReview: EngineerReview;
-  priorityScore: number;
+  structural_data: Record<string, unknown>;
+  ai_fused_label: string | null;
+  ai_fused_confidence: number | null;
+  ai_image_label: string | null;
+  ai_image_confidence: number | null;
+  ai_image_probabilities: Record<string, number> | null;
+  ai_tabular_label: string | null;
+  ai_tabular_confidence: number | null;
+  ai_feature_importance: Record<string, number> | null;
+  ai_fusion_weights: { image: number; tabular: number } | null;
+  action_recommendations: string[] | null;
+  action_generated_by: 'gemini' | 'template-fallback' | null;
+  action_generated_at: string | null;
+  reviewed_by: string | null;
+  override_classification: string | null;
+  review_justification: string | null;
+  reviewed_at: string | null;
+  priority_score: number;
   status: AssessmentStatus;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
+  images: AssessmentImage[];
+  building?: Building;
 }
 
 export interface SyncQueueItem {

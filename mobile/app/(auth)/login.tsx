@@ -15,7 +15,7 @@ import {
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
 import Text from '../../components/CustomText';
-import { loginUser, saveUserToken } from '../../services/auth';
+import { loginUser } from '../../services/auth';
 
 const InterfaceTheme = {
   accent: Colors.primary,
@@ -76,8 +76,7 @@ export default function LoginScreen() {
 
     setIsSubmitting(true);
     try {
-      const { access_token } = await loginUser(normalizedEmail, password);
-      await saveUserToken(access_token);
+      await loginUser(normalizedEmail, password);
       setIsSubmitting(false);
       router.replace('/(tabs)');
     } catch (loginError) {

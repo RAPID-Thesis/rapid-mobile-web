@@ -1,8 +1,8 @@
 fastapi
 passlib
-PyJWT
 psycopg[binary]
 python-dotenv
 python-multipart
 sqlalchemy
+supabase
 uvicorn

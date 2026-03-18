@@ -1,10 +1,10 @@
-import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
-import { mockAssessments } from '../../mock/assessments';
-import { mockBuildings } from '../../mock/buildings';
+import { supabase } from '../../services/supabase';
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -24,48 +24,64 @@ function DataRow({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function ConfidenceBar({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <View style={styles.confRow}>
-      <Text style={styles.confLabel}>{label}</Text>
-      <View style={styles.confBarBg}>
-        <View style={[styles.confBarFill, { width: `${value * 100}%`, backgroundColor: color }]} />
-      </View>
-      <Text style={styles.confValue}>{(value * 100).toFixed(0)}%</Text>
-    </View>
-  );
-}
-
 export default function AssessmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const assessment = mockAssessments.find((a) => a._id === id);
-  const building = assessment ? mockBuildings.find((b) => b._id === assessment.buildingId) : null;
+  const [assessment, setAssessment] = useState<any>(null);
+  const [building, setBuilding] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const { data: aData } = await supabase
+        .from('assessments')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (aData?.building_id) {
+        const { data: bData } = await supabase
+          .from('buildings')
+          .select('*')
+          .eq('id', aData.building_id)
+          .single();
+        setBuilding(bData);
+      }
+
+      setAssessment(aData);
+      setLoading(false);
+    }
+    load();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   if (!assessment) {
     return (
       <View style={styles.center}>
+        <Ionicons name="document-text-outline" size={48} color={Colors.textMuted} />
         <Text style={styles.errorText}>Assessment not found</Text>
       </View>
     );
   }
 
-  const fused = assessment.aiResult?.fusedClassification;
-  const classLabel = fused?.label ?? 'N/A';
+  const classLabel = assessment.ai_fused_label ?? 'Pending';
+  const confidence = assessment.ai_fused_confidence;
   const isUnsafe = classLabel === 'UNSAFE' || classLabel === 'high';
   const isRestricted = classLabel === 'RESTRICTED' || classLabel === 'moderate';
   const badgeColor = isUnsafe ? Colors.unsafe : isRestricted ? Colors.restricted : Colors.safe;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Classification Banner */}
       <LinearGradient
         colors={[
           badgeColor,
-          classLabel === 'UNSAFE' || classLabel === 'high'
-            ? '#7F1D1D'
-            : classLabel === 'RESTRICTED' || classLabel === 'moderate'
-              ? '#92400E'
-              : '#166534',
+          isUnsafe ? '#7F1D1D' : isRestricted ? '#92400E' : '#166534',
         ]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -79,105 +95,47 @@ export default function AssessmentDetailScreen() {
         <View>
           <Text style={styles.bannerLabel}>{classLabel.toUpperCase()}</Text>
           <Text style={styles.bannerConf}>
-            {fused ? `${(fused.confidence * 100).toFixed(0)}% confidence` : 'No AI result'}
+            {confidence != null ? `${(confidence * 100).toFixed(0)}% confidence` : 'No AI result yet'}
           </Text>
         </View>
-        <View style={styles.priorityBadge}>
-          <Text style={styles.priorityText}>Priority: {assessment.priorityScore}</Text>
-        </View>
+        {assessment.priority_score != null && (
+          <View style={styles.priorityBadge}>
+            <Text style={styles.priorityText}>Priority: {assessment.priority_score}</Text>
+          </View>
+        )}
       </LinearGradient>
 
-      {/* Building Info */}
       <SectionCard title="Building Information">
-        <DataRow label="Code" value={building?.buildingCode ?? assessment.buildingId} />
-        <DataRow label="Address" value={building?.address ?? 'N/A'} />
-        <DataRow label="Barangay" value={building?.barangay ?? 'N/A'} />
-        <DataRow label="Use" value={building?.buildingUse ?? 'N/A'} />
-        <DataRow label="Stories" value={building?.numberOfStories ?? 'N/A'} />
-        <DataRow label="Year Built" value={building?.yearBuilt ?? 'N/A'} />
-        <DataRow label="Soil Class" value={building?.soilClassification ?? 'N/A'} />
+        <DataRow label="Code" value={building?.building_code ?? '—'} />
+        <DataRow label="Address" value={building?.address ?? '—'} />
+        <DataRow label="Barangay" value={building?.barangay ?? '—'} />
+        <DataRow label="Use" value={building?.building_use ?? '—'} />
+        <DataRow label="Stories" value={building?.number_of_stories ?? '—'} />
+        <DataRow label="Year Built" value={building?.year_built ?? '—'} />
+        <DataRow label="Soil Class" value={building?.soil_classification ?? '—'} />
       </SectionCard>
 
-      {/* Photos */}
-      <SectionCard title={`Photos (${assessment.images.length})`}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-          {assessment.images.map((img, i) => (
-            <View key={i} style={styles.photoCard}>
-              <Image source={{ uri: img.url }} style={styles.photo} />
-              <Text style={styles.photoAngle}>{img.angle}</Text>
-            </View>
-          ))}
-        </ScrollView>
+      <SectionCard title="Assessment Details">
+        <DataRow label="Phase" value={assessment.phase === 'pre-earthquake' ? 'Pre-Earthquake' : 'Post-Earthquake'} />
+        <DataRow label="Status" value={assessment.status ?? '—'} />
+        <DataRow label="Created" value={new Date(assessment.created_at).toLocaleDateString()} />
       </SectionCard>
 
-      {/* AI Results */}
-      {assessment.aiResult && (
-        <SectionCard title="AI Classification Results">
-          <Text style={styles.subTitle}>Image Branch (ResNet50)</Text>
-          {Object.entries(assessment.aiResult.imageClassification.probabilities).map(([k, v]) => (
-            <ConfidenceBar key={k} label={k.toUpperCase()} value={v as number} color={
-              k === 'UNSAFE' || k === 'high' ? Colors.unsafe :
-              k === 'RESTRICTED' || k === 'moderate' ? Colors.restricted : Colors.safe
-            } />
-          ))}
-
-          <Text style={[styles.subTitle, { marginTop: Spacing.md }]}>Tabular Branch (Random Forest)</Text>
-          {Object.entries(assessment.aiResult.tabularClassification.probabilities).map(([k, v]) => (
-            <ConfidenceBar key={k} label={k.toUpperCase()} value={v as number} color={
-              k === 'UNSAFE' || k === 'high' ? Colors.unsafe :
-              k === 'RESTRICTED' || k === 'moderate' ? Colors.restricted : Colors.safe
-            } />
-          ))}
-
-          <Text style={[styles.subTitle, { marginTop: Spacing.md }]}>
-            Fused Result (Image {(assessment.aiResult.fusionWeights.image * 100).toFixed(0)}% / Tabular {(assessment.aiResult.fusionWeights.tabular * 100).toFixed(0)}%)
-          </Text>
-          <LinearGradient
-            colors={[
-              badgeColor,
-              classLabel === 'UNSAFE' || classLabel === 'high'
-                ? '#7F1D1D'
-                : classLabel === 'RESTRICTED' || classLabel === 'moderate'
-                  ? '#92400E'
-                  : '#166534',
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.fusedBadge}
-          >
-            <Text style={styles.fusedText}>
-              {classLabel.toUpperCase()} — {fused ? (fused.confidence * 100).toFixed(1) : 0}%
-            </Text>
-          </LinearGradient>
-        </SectionCard>
-      )}
-
-      {/* Action Plan */}
-      {assessment.actionPlan && (
+      {assessment.action_plan_text && (
         <SectionCard title="Action Plan">
-          <Text style={styles.actionSource}>
-            Generated by: {assessment.actionPlan.generatedBy === 'gemini' ? 'Gemini AI' : 'Template Fallback'}
-          </Text>
-          {assessment.actionPlan.recommendations.map((rec, i) => (
-            <View key={i} style={styles.actionItem}>
-              <Text style={styles.actionNum}>{i + 1}</Text>
-              <Text style={styles.actionText}>{rec}</Text>
-            </View>
-          ))}
+          <Text style={styles.actionText}>{assessment.action_plan_text}</Text>
         </SectionCard>
       )}
 
-      {/* Engineer Review */}
       <SectionCard title="Engineer Review">
-        {assessment.engineerReview.reviewedBy ? (
+        {assessment.review_engineer_id ? (
           <View>
             <DataRow label="Status" value="Reviewed" />
-            <DataRow label="Reviewed At" value={new Date(assessment.engineerReview.reviewedAt!).toLocaleString()} />
-            {assessment.engineerReview.overrideClassification && (
-              <>
-                <DataRow label="Override" value={assessment.engineerReview.overrideClassification} />
-                <DataRow label="Justification" value={assessment.engineerReview.justification ?? 'N/A'} />
-              </>
+            {assessment.review_override_label && (
+              <DataRow label="Override" value={assessment.review_override_label} />
+            )}
+            {assessment.review_justification && (
+              <DataRow label="Justification" value={assessment.review_justification} />
             )}
           </View>
         ) : (
@@ -194,8 +152,8 @@ export default function AssessmentDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { paddingBottom: Spacing.xl, paddingTop: Spacing.sm },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { fontSize: FontSize.lg, color: Colors.error },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: Spacing.sm },
+  errorText: { fontSize: FontSize.lg, color: Colors.textMuted, fontWeight: '600' },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -236,25 +194,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text, marginBottom: Spacing.sm },
-  subTitle: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.textSecondary, marginBottom: Spacing.xs },
   dataRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.xs, borderBottomWidth: 1, borderBottomColor: Colors.border },
   dataLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
   dataValue: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text, maxWidth: '60%', textAlign: 'right' },
-  photoScroll: { marginTop: Spacing.xs },
-  photoCard: { marginRight: Spacing.sm, alignItems: 'center' },
-  photo: { width: 120, height: 90, borderRadius: BorderRadius.sm, backgroundColor: Colors.border, borderWidth: 1, borderColor: Colors.borderStrong },
-  photoAngle: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 4 },
-  confRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
-  confLabel: { width: 90, fontSize: FontSize.xs, fontWeight: '600', color: Colors.text },
-  confBarBg: { flex: 1, height: 10, backgroundColor: Colors.border, borderRadius: 5, overflow: 'hidden' },
-  confBarFill: { height: '100%', borderRadius: 5 },
-  confValue: { width: 36, fontSize: FontSize.xs, fontWeight: '700', color: Colors.text, textAlign: 'right' },
-  fusedBadge: { padding: Spacing.md, borderRadius: BorderRadius.md, alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 },
-  fusedText: { color: '#FFF', fontSize: FontSize.lg, fontWeight: '800' },
-  actionSource: { fontSize: FontSize.xs, color: Colors.textMuted, marginBottom: Spacing.sm },
-  actionItem: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm, alignItems: 'flex-start' },
-  actionNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primaryDark, color: '#FFF', fontSize: FontSize.xs, fontWeight: '700', textAlign: 'center', lineHeight: 24, overflow: 'hidden' },
-  actionText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
+  actionText: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
   pendingReview: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md, backgroundColor: '#FFFBEB', borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: '#FDE68A' },
   pendingText: { fontSize: FontSize.sm, color: Colors.warning, fontWeight: '500' },
 });
