@@ -1,0 +1,19 @@
+{
+  "n_buildings": 500,
+  "gis_data_dir": "D:\\thesis\\rapid\\ml\\data\\gis\\data",
+  "fault_shp": "D:\\thesis\\rapid\\ml\\data\\gis\\data\\H_VFS_PHIVOLCS\\H_VFS_ALL_PHIVOLCS_PL.shp",
+  "liquefaction_dir": "D:\\thesis\\rapid\\ml\\data\\gis\\data\\H_LIQ_PHIVOLCS_BUL",
+  "liquefaction_overlay": true,
+  "liq_tier_to_soil_classification": {
+    "LOW": "C",
+    "MOD": "D",
+    "HIGH": "E"
+  },
+  "study_area": "San Jose del Monte, Bulacan, Philippines",
+  "study_area_boundary": "nominatim:San Jose del Monte, Bulacan, Philippines",
+  "nominatim_query": "San Jose del Monte, Bulacan, Philippines",
+  "projected_crs": "EPSG:32651",
+  "distance_column": "distance_to_fault_km",
+  "seed": 42,
+  "note": "distance_to_fault_km is nearest planar distance in projected CRS (km) to H_VFS_ALL_PHIVOLCS_PL."
+}
