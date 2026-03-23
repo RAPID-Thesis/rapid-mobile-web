@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "db:test": "node scripts/test-mongodb.js",
+    "db:seed": "node scripts/seed-mongodb.js",
+    "api": "node api/server.js",
+    "api:dev": "node --watch api/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongodb": "^7.1.0"
+  }
+}
