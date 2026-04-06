@@ -1,35 +1,91 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import AssessmentsPage from './pages/AssessmentsPage';
-import AssessmentDetailPage from './pages/AssessmentDetailPage';
-import HeatmapPage from './pages/HeatmapPage';
-import ReportsPage from './pages/ReportsPage';
-import UsersPage from './pages/UsersPage';
+import PageSpinner from './components/PageSpinner';
+
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AssessmentsPage = lazy(() => import('./pages/AssessmentsPage'));
+const AssessmentDetailPage = lazy(() => import('./pages/AssessmentDetailPage'));
+const HeatmapPage = lazy(() => import('./pages/HeatmapPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+
+function Lazy({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<PageSpinner label="Loading…" />}>{children}</Suspense>;
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/login"
+            element={
+              <Lazy>
+                <LoginPage />
+              </Lazy>
+            }
+          />
 
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/assessments" element={<AssessmentsPage />} />
-              <Route path="/assessments/:id" element={<AssessmentDetailPage />} />
-              <Route path="/heatmap" element={<HeatmapPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
+              <Route
+                path="/"
+                element={
+                  <Lazy>
+                    <DashboardPage />
+                  </Lazy>
+                }
+              />
+              <Route
+                path="/assessments"
+                element={
+                  <Lazy>
+                    <AssessmentsPage />
+                  </Lazy>
+                }
+              />
+              <Route
+                path="/assessments/:id"
+                element={
+                  <Lazy>
+                    <AssessmentDetailPage />
+                  </Lazy>
+                }
+              />
+              <Route
+                path="/heatmap"
+                element={
+                  <Lazy>
+                    <HeatmapPage />
+                  </Lazy>
+                }
+              />
+              <Route
+                path="/reports"
+                element={
+                  <Lazy>
+                    <ReportsPage />
+                  </Lazy>
+                }
+              />
             </Route>
           </Route>
 
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route element={<AppLayout />}>
-              <Route path="/users" element={<UsersPage />} />
+              <Route
+                path="/users"
+                element={
+                  <Lazy>
+                    <UsersPage />
+                  </Lazy>
+                }
+              />
             </Route>
           </Route>
 

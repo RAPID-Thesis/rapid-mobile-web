@@ -34,14 +34,42 @@ interface AuthState {
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-  if (error || !data) return null;
-  return data as UserProfile;
+    if (error || !data) return null;
+    return data as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+/** Never block auth UI on profile fetch — avoids endless spinner if DB hangs or RLS fails. */
+function finishAuthBootstrap(
+  s: Session | null,
+  setters: {
+    setSession: (v: Session | null) => void;
+    setUser: (v: User | null) => void;
+    setProfile: (v: UserProfile | null) => void;
+    setLoading: (v: boolean) => void;
+  },
+  cancelled: () => boolean
+) {
+  setters.setSession(s);
+  setters.setUser(s?.user ?? null);
+  if (!s?.user) {
+    setters.setProfile(null);
+    if (!cancelled()) setters.setLoading(false);
+    return;
+  }
+  if (!cancelled()) setters.setLoading(false);
+  void fetchProfile(s.user.id).then((p) => {
+    if (!cancelled()) setters.setProfile(p);
+  });
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -51,30 +79,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        const p = await fetchProfile(s.user.id);
-        setProfile(p);
-      }
-      setLoading(false);
-    });
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: s } }) => {
+        if (cancelled) return;
+        finishAuthBootstrap(s, { setSession, setUser, setProfile, setLoading }, isCancelled);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        const p = await fetchProfile(s.user.id);
-        setProfile(p);
-      } else {
-        setProfile(null);
-      }
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      finishAuthBootstrap(s, { setSession, setUser, setProfile, setLoading }, isCancelled);
     });
 
-    return () => subscription.unsubscribe();
+    const failSafe = window.setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 12_000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(failSafe);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
