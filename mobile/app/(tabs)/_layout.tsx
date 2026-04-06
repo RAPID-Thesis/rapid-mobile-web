@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize } from '../../constants/theme';
+import { platformShadow } from '../../utils/platformShadow';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -26,11 +27,7 @@ export default function TabLayout() {
           marginBottom: 8,
           borderRadius: 16,
           position: 'absolute',
-          shadowColor: '#0F172A',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.15,
-          shadowRadius: 12,
-          elevation: 6,
+          ...platformShadow('#0F172A', { width: 0, height: 8 }, 0.15, 12, 6),
         },
         headerStyle: { backgroundColor: Colors.primaryDark },
         headerTintColor: '#FFFFFF',

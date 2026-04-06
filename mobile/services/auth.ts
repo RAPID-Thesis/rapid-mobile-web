@@ -26,21 +26,25 @@ export async function loginUser(
   if (error) throw new Error(error.message);
   if (!data.session || !data.user) throw new Error('Login failed.');
 
-  const { data: profile } = await supabase
+  // Session is valid as soon as sign-in succeeds. Do not block the UI on `profiles`:
+  // that query can hang (RLS, network, Web) even when Auth shows the user as signed in.
+  void supabase
     .from('profiles')
     .select('*')
     .eq('id', data.user.id)
-    .single();
+    .single()
+    .then(() => {});
 
+  const meta = data.user.user_metadata ?? {};
   return {
     access_token: data.session.access_token,
     user: {
       id: data.user.id,
       email: data.user.email ?? email,
-      full_name: profile?.full_name ?? '',
-      role: profile?.role ?? 'inspector',
-      lgu_code: profile?.lgu_code ?? '',
-      avatar_url: profile?.avatar_url ?? null,
+      full_name: typeof meta.full_name === 'string' ? meta.full_name : '',
+      role: (meta.role as UserProfile['role']) ?? 'inspector',
+      lgu_code: typeof meta.lgu_code === 'string' ? meta.lgu_code : '',
+      avatar_url: null,
     },
   };
 }

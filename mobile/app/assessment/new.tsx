@@ -9,14 +9,26 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
-import { ImageAngle, AssessmentPhase, BuildingUse } from '../../types';
-import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
-import { WizardTheme } from './wizardTheme';
+import { ImageAngle, AssessmentPhase, BuildingUse, SoilClass } from '../../types';
+import Step3StructuralData, { StructuralDataState, SoilClassOption } from './Step3StructuralData';
+import { WizardTheme } from '../../constants/wizardTheme';
 import Text from '../../components/CustomText';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../services/supabase';
+
+function mapSoilOptionToDb(option: SoilClassOption | ''): SoilClass | null {
+  if (!option) return null;
+  if (option.startsWith('Type A')) return 'B';
+  if (option.startsWith('Type C')) return 'C';
+  if (option.startsWith('Type D')) return 'D';
+  if (option.startsWith('Type E')) return 'E';
+  return null;
+}
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
@@ -75,6 +87,8 @@ function StepIndicator({ current }: { current: number }) {
 }
 
 export default function NewAssessmentScreen() {
+  const { session, profile } = useAuth();
+  const [saving, setSaving] = useState(false);
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<AssessmentPhase>('pre-earthquake');
   const [buildingCode, setBuildingCode] = useState('');
@@ -109,10 +123,91 @@ export default function NewAssessmentScreen() {
     }
   };
 
-  const handleSubmit = () => {
-    Alert.alert('Assessment Saved', 'Your assessment has been saved locally and queued for sync.', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+  const handleSubmit = async () => {
+    if (!session?.user) {
+      Alert.alert('Sign in required', 'Please sign in to save assessments to the server.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const code = buildingCode.trim();
+      const municipality = (profile?.lgu_code ?? '').trim() || 'Unknown';
+      const barangayVal = barangay.trim() || 'TBD';
+      const storiesParsed = parseInt(structuralData.stories, 10);
+      const yearParsed = structuralData.yearBuilt.trim()
+        ? parseInt(structuralData.yearBuilt, 10)
+        : NaN;
+
+      const { data: existingBuilding, error: findErr } = await supabase
+        .from('buildings')
+        .select('id')
+        .eq('building_code', code)
+        .maybeSingle();
+
+      if (findErr) throw findErr;
+
+      let buildingId: string;
+      if (existingBuilding?.id) {
+        buildingId = existingBuilding.id;
+      } else {
+        const { data: inserted, error: buildingErr } = await supabase
+          .from('buildings')
+          .insert({
+            building_code: code,
+            address: address.trim(),
+            barangay: barangayVal,
+            municipality,
+            building_use: buildingUse,
+            number_of_stories: Number.isFinite(storiesParsed) && storiesParsed > 0 ? storiesParsed : 1,
+            year_built: Number.isFinite(yearParsed) ? yearParsed : null,
+            structural_system: structuralData.structuralSystem || null,
+            soil_classification: mapSoilOptionToDb(structuralData.soilClass),
+            created_by: session.user.id,
+          })
+          .select('id')
+          .single();
+
+        if (buildingErr) throw buildingErr;
+        if (!inserted?.id) throw new Error('Building was not created.');
+        buildingId = inserted.id;
+      }
+
+      const structural_data = {
+        stories: structuralData.stories,
+        yearBuilt: structuralData.yearBuilt,
+        structuralSystem: structuralData.structuralSystem,
+        primaryMaterial: structuralData.primaryMaterial,
+        condition: structuralData.condition,
+        soilClass: structuralData.soilClass,
+        topography: structuralData.topography,
+        verticalIrregularity: structuralData.verticalIrregularity,
+        planIrregularity: structuralData.planIrregularity,
+        poundingHazard: structuralData.poundingHazard,
+        fallingHazard: structuralData.fallingHazard,
+        capturedAngles,
+      };
+
+      const { error: assessmentErr } = await supabase.from('assessments').insert({
+        building_id: buildingId,
+        inspector_id: session.user.id,
+        phase,
+        structural_data,
+        status: 'pending-review',
+        priority_score: 0,
+      });
+
+      if (assessmentErr) throw assessmentErr;
+
+      Alert.alert('Assessment saved', 'It will appear on the web dashboard for your team.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Could not save assessment.';
+      Alert.alert('Save failed', message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const canProceed = () => {
@@ -282,10 +377,10 @@ export default function NewAssessmentScreen() {
             <Text style={styles.sectionTitle}>Review Assessment</Text>
 
             <View style={styles.offlineNotice}>
-              <Ionicons name="cloud-offline" size={20} color={WizardTheme.colors.infoText} />
+              <Ionicons name="cloud-upload-outline" size={20} color={WizardTheme.colors.infoText} />
               <Text style={styles.offlineText}>
-                📡 Offline Mode Active: Assessment will be saved locally and synced automatically when
-                connection is restored.
+                Tap Save to upload this assessment to the server. It will show up in the web app for
+                reviewers.
               </Text>
             </View>
 
@@ -348,11 +443,15 @@ export default function NewAssessmentScreen() {
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              style={[styles.nextBtn, !canProceed() && styles.nextBtnDisabled]}
-              onPress={() => (step < 3 ? setStep(step + 1) : handleSubmit())}
-              disabled={!canProceed()}
+              style={[styles.nextBtn, (!canProceed() || saving) && styles.nextBtnDisabled]}
+              onPress={() => (step < 3 ? setStep(step + 1) : void handleSubmit())}
+              disabled={!canProceed() || saving}
             >
-              <Text style={styles.nextBtnText}>{step < 3 ? 'Next' : 'Save Assessment'}</Text>
+              {saving ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.nextBtnText}>{step < 3 ? 'Next' : 'Save Assessment'}</Text>
+              )}
             </TouchableOpacity>
           </>
         )}

@@ -9,8 +9,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MinTouchTarget } from '../../constants/theme';
-import { WizardTheme } from './wizardTheme';
+import { Colors, MinTouchTarget } from '../../constants/theme';
+import { WizardTheme } from '../../constants/wizardTheme';
 import Text from '../../components/CustomText';
 
 export type PrimaryMaterialOption =

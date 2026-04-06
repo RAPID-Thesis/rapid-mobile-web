@@ -1,3 +1,5 @@
+import { platformShadow } from '../utils/platformShadow';
+
 export const WizardTheme = {
   colors: {
     primary: '#0A4D92',
@@ -37,10 +39,6 @@ export const WizardTheme = {
     helper: 13,
   },
   elevation: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
+    ...platformShadow('#0F172A', { width: 0, height: 2 }, 0.07, 6, 2),
   },
 } as const;

@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
+import { platformShadow } from '../../utils/platformShadow';
 import { supabase } from '../../services/supabase';
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -161,11 +162,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     marginHorizontal: Spacing.md,
     borderRadius: BorderRadius.lg,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 5,
+    ...platformShadow('#0F172A', { width: 0, height: 8 }, 0.2, 12, 5),
   },
   bannerLabel: { color: '#FFF', fontSize: FontSize.xl, fontWeight: '800' },
   bannerConf: { color: 'rgba(255,255,255,0.8)', fontSize: FontSize.sm },
@@ -187,11 +184,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    ...platformShadow('#0F172A', { width: 0, height: 4 }, 0.05, 8, 2),
   },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text, marginBottom: Spacing.sm },
   dataRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.xs, borderBottomWidth: 1, borderBottomColor: Colors.border },

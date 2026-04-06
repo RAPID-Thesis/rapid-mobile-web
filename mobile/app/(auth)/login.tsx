@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { platformShadow } from '../../utils/platformShadow';
 import Text from '../../components/CustomText';
 import { loginUser } from '../../services/auth';
 
@@ -77,13 +78,13 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       await loginUser(normalizedEmail, password);
-      setIsSubmitting(false);
-      router.replace('/(tabs)');
+      router.replace('/');
     } catch (loginError) {
-      setIsSubmitting(false);
       setError(
         loginError instanceof Error ? loginError.message : 'Unable to sign in. Please try again.'
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -293,11 +294,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.9)',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    ...platformShadow('#0F172A', { width: 0, height: 12 }, 0.18, 22, 8),
     maxWidth: 300,
     alignSelf: 'center',
     width: '100%',
@@ -413,11 +410,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
     borderWidth: 1,
     borderColor: '#111827',
-    shadowColor: '#111827',
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    ...platformShadow('#111827', { width: 0, height: 4 }, 0.16, 8, 3),
   },
   buttonDisabled: {
     backgroundColor: '#6B7280',

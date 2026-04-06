@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { platformShadow } from '../../utils/platformShadow';
 import { useAuth } from '../../context/AuthContext';
 
 function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
@@ -32,7 +33,7 @@ export default function ProfileScreen() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace('/(auth)/login');
+    router.replace('/login');
   };
 
   return (
@@ -85,11 +86,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     padding: Spacing.lg,
     overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3,
+    ...platformShadow('#0F172A', { width: 0, height: 6 }, 0.08, 10, 3),
   },
   avatarGlow: {
     position: 'absolute',
@@ -126,11 +123,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    ...platformShadow('#0F172A', { width: 0, height: 4 }, 0.05, 8, 2),
   },
   sectionTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textSecondary, marginBottom: Spacing.sm, textTransform: 'uppercase', letterSpacing: 1 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
@@ -148,11 +141,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     marginTop: Spacing.md,
     backgroundColor: '#FFF5F5',
-    shadowColor: '#7F1D1D',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 1,
+    ...platformShadow('#7F1D1D', { width: 0, height: 3 }, 0.08, 6, 1),
   },
   logoutText: { color: Colors.error, fontSize: FontSize.md, fontWeight: '600' },
 });

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator }
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { platformShadow } from '../../utils/platformShadow';
 
 export default function SyncScreen() {
   const [isSyncingNow] = useState(false);
@@ -41,11 +42,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 5,
+    ...platformShadow('#0F172A', { width: 0, height: 8 }, 0.2, 12, 5),
   },
   healthTitle: { color: '#FFFFFF', fontSize: FontSize.md, fontWeight: '800' },
   healthMeta: { color: 'rgba(255,255,255,0.86)', fontSize: FontSize.xs, marginTop: 2, marginBottom: Spacing.sm },

@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
+import { platformShadow } from '../../utils/platformShadow';
 import { supabase } from '../../services/supabase';
 
 interface AssessmentRow {
@@ -191,11 +192,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    ...platformShadow('#0F172A', { width: 0, height: 4 }, 0.06, 8, 2),
   },
   headerTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
   header: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
@@ -229,11 +226,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 7,
-    elevation: 2,
+    ...platformShadow('#0F172A', { width: 0, height: 4 }, 0.05, 7, 2),
   },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   cardCode: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
@@ -284,10 +277,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryDark,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.32,
-    shadowRadius: 8,
+    ...platformShadow('#000000', { width: 0, height: 2 }, 0.32, 8, 4),
   },
 });

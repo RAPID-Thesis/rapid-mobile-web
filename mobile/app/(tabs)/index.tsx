@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { platformShadow } from '../../utils/platformShadow';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
 
@@ -102,11 +103,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    elevation: 7,
+    ...platformShadow('#0F172A', { width: 0, height: 10 }, 0.28, 16, 7),
   },
   heroEyebrow: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.8)', letterSpacing: 0.7, fontWeight: '700' },
   greeting: { fontSize: FontSize.xl, fontWeight: '800', color: '#FFFFFF', marginTop: 2 },
@@ -131,11 +128,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 2,
+    ...platformShadow('#0F172A', { width: 0, height: 4 }, 0.07, 8, 2),
   },
   statIconWrap: {
     width: 34,
@@ -151,11 +144,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     marginVertical: Spacing.md,
     overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 5,
+    ...platformShadow('#0F172A', { width: 0, height: 8 }, 0.25, 12, 5),
   },
   newButtonGradient: {
     flex: 1,
