@@ -1,0 +1,49 @@
+{
+  "model_key": "resnet50_pre",
+  "mode": "pre",
+  "tf_version": "2.20.0",
+  "trained_at_utc": "2026-04-18T15:30:22.447670+00:00",
+  "class_names": [
+    "high",
+    "low",
+    "moderate"
+  ],
+  "image_size": [
+    224,
+    224
+  ],
+  "data_dir": "D:\\thesis\\rapid\\ml\\data\\images_prepared",
+  "val_macro_f1": 0.9975536365022316,
+  "per_class_f1": {
+    "high": 0.994535519125683,
+    "low": 0.99875,
+    "moderate": 0.9993753903810119
+  },
+  "confusion_matrix": [
+    [
+      91,
+      1,
+      0
+    ],
+    [
+      0,
+      799,
+      1
+    ],
+    [
+      0,
+      0,
+      800
+    ]
+  ],
+  "regularization": {
+    "l2": 0.0001,
+    "label_smoothing": 0.1,
+    "head_dropout": [
+      0.5,
+      0.4
+    ],
+    "fine_tune_layers": 20,
+    "batchnorm_frozen": true
+  }
+}

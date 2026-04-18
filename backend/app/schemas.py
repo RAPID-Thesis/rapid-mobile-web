@@ -245,3 +245,44 @@ class AssessmentDetailRead(AssessmentRead):
 class EngineerReviewPayload(BaseModel):
     override_classification: str | None = None
     justification: str = Field(..., min_length=1, max_length=2000)
+
+
+# -- AI inference --
+
+class AIPhase(str, Enum):
+    PRE = "pre"
+    POST = "post"
+
+
+class TabularPredictPayload(BaseModel):
+    """Structured building fields used by the RF model.
+
+    ``elevation_m`` / ``slope_deg`` are optional — the server will auto-populate
+    them from the SRTM tile using ``latitude`` / ``longitude`` when provided.
+    """
+
+    phase: AIPhase = AIPhase.PRE
+    year_built: int | None = None
+    number_of_stories: int = Field(1, ge=1, le=200)
+    building_use: BuildingUse = BuildingUse.RESIDENTIAL
+    soil_classification: SoilClass | None = None
+    distance_to_fault_km: float | None = None
+    elevation_m: float | None = None
+    slope_deg: float | None = None
+    previous_retrofit: bool = False
+    structural_system: str | None = None
+    foundation_type: str | None = None
+    material: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class AIPredictionResult(BaseModel):
+    phase: str
+    label: str
+    confidence: float
+    probabilities: dict[str, float]
+    weights: dict[str, float] | None = None
+    image: dict[str, Any] | None = None
+    tabular: dict[str, Any] | None = None
+    feature_importance: dict[str, float] | None = None

@@ -22,3 +22,22 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# ML model artifacts (large binaries)
+ml/artifacts/*.joblib
+ml/artifacts/*.keras
+ml/artifacts/resnet50_*/
+
+# SRTM elevation tile (25 MB, auto-downloaded)
+ml/data/gis/srtm/
+
+# Prepared image dataset (derived from originals)
+ml/data/images_prepared/
+
+# Raw training images (user-provided, not redistributable)
+ml/data/images/
+
+# Generated training CSVs (reproducible from scripts)
+ml/data/train_pre.csv
+ml/data/train_post.csv
+ml/data/generation_meta.json

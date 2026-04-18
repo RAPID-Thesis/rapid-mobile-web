@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Image,
   LayoutAnimation,
   Platform,
   UIManager,
@@ -17,6 +18,7 @@ import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../c
 import { ImageAngle, AssessmentPhase, BuildingUse, SoilClass } from '../../types';
 import Step3StructuralData, { StructuralDataState, SoilClassOption } from './Step3StructuralData';
 import { WizardTheme } from '../../constants/wizardTheme';
+import CameraCapture, { CapturedPhoto } from './CameraCapture';
 import Text from '../../components/CustomText';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
@@ -95,7 +97,9 @@ export default function NewAssessmentScreen() {
   const [address, setAddress] = useState('');
   const [barangay, setBarangay] = useState('');
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
-  const [capturedAngles, setCapturedAngles] = useState<ImageAngle[]>([]);
+  const [capturedPhotos, setCapturedPhotos] = useState<Partial<Record<ImageAngle, CapturedPhoto>>>({});
+  const [captureTarget, setCaptureTarget] = useState<ImageAngle | null>(null);
+  const capturedAngles = Object.keys(capturedPhotos) as ImageAngle[];
   const [structuralData, setStructuralData] = useState<StructuralDataState>({
     stories: '',
     yearBuilt: '',
@@ -117,10 +121,19 @@ export default function NewAssessmentScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   }, [step]);
 
-  const mockCapture = (angle: ImageAngle) => {
-    if (!capturedAngles.includes(angle)) {
-      setCapturedAngles([...capturedAngles, angle]);
-    }
+  const openCapture = (angle: ImageAngle) => setCaptureTarget(angle);
+
+  const handleCaptured = (photo: CapturedPhoto) => {
+    setCapturedPhotos((prev) => ({ ...prev, [photo.angle]: photo }));
+    setCaptureTarget(null);
+  };
+
+  const removeCapture = (angle: ImageAngle) => {
+    setCapturedPhotos((prev) => {
+      const next = { ...prev };
+      delete next[angle];
+      return next;
+    });
   };
 
   const handleSubmit = async () => {
@@ -323,40 +336,60 @@ export default function NewAssessmentScreen() {
           <View style={styles.stepCard}>
             <Text style={styles.sectionTitle}>Smart Framing Guide</Text>
             <Text style={styles.hint}>
-              Capture at least 2 of 4 angles. Tap each angle to simulate capture.
+              Capture at least 2 of 4 angles. Each photo is checked for blur, tilt, and minimum
+              resolution before you continue.
             </Text>
-
-            <View style={styles.cameraPreview}>
-              <View style={styles.gridOverlay}>
-                <View style={styles.gridLineH} />
-                <View style={styles.gridLineH2} />
-                <View style={styles.gridLineV} />
-                <View style={styles.gridLineV2} />
-              </View>
-              <View style={styles.centerCross}>
-                <Ionicons name="add" size={40} color="rgba(255,255,255,0.5)" />
-              </View>
-              <Text style={styles.cameraLabel}>Camera Preview (Simulated)</Text>
-            </View>
 
             <Text style={styles.fieldLabel}>Required Angles ({capturedAngles.length}/4 captured)</Text>
             {ANGLES.map((a) => {
-              const captured = capturedAngles.includes(a.key);
+              const photo = capturedPhotos[a.key];
+              const captured = Boolean(photo);
               return (
-                <TouchableOpacity
+                <View
                   key={a.key}
                   style={[styles.angleRow, captured && styles.angleRowCaptured]}
-                  onPress={() => mockCapture(a.key)}
                 >
-                  <Ionicons
-                    name={captured ? 'checkmark-circle' : (a.icon as any)}
-                    size={24}
-                    color={captured ? WizardTheme.colors.success : WizardTheme.colors.textMuted}
-                  />
-                  <Text style={[styles.angleLabel, captured && styles.angleLabelCaptured]}>{a.label}</Text>
-                  {!captured && <Text style={styles.angleTap}>TAP TO CAPTURE</Text>}
-                  {captured && <Text style={[styles.angleTap, styles.angleTapCaptured]}>CAPTURED</Text>}
-                </TouchableOpacity>
+                  {captured && photo ? (
+                    <Image source={{ uri: photo.uri }} style={styles.angleThumb} />
+                  ) : (
+                    <View style={styles.angleThumbPlaceholder}>
+                      <Ionicons name={a.icon as any} size={22} color={WizardTheme.colors.textMuted} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.angleLabel, captured && styles.angleLabelCaptured]}>
+                      {a.label}
+                    </Text>
+                    {captured && photo ? (
+                      <Text style={styles.angleMeta}>
+                        {photo.width}×{photo.height} • tilt {photo.tiltDeg.toFixed(0)}°
+                      </Text>
+                    ) : null}
+                  </View>
+                  {captured ? (
+                    <View style={styles.angleActions}>
+                      <TouchableOpacity
+                        style={styles.angleActionBtn}
+                        onPress={() => openCapture(a.key)}
+                        accessibilityLabel={`Retake ${a.label}`}
+                      >
+                        <Ionicons name="refresh" size={18} color={WizardTheme.colors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.angleActionBtn}
+                        onPress={() => removeCapture(a.key)}
+                        accessibilityLabel={`Remove ${a.label}`}
+                      >
+                        <Ionicons name="trash-outline" size={18} color={WizardTheme.colors.unsafe} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity style={styles.captureBtn} onPress={() => openCapture(a.key)}>
+                      <Ionicons name="camera" size={16} color="#FFF" />
+                      <Text style={styles.captureBtnText}>Capture</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               );
             })}
           </View>
@@ -399,8 +432,18 @@ export default function NewAssessmentScreen() {
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Photos</Text>
               <Text style={styles.reviewValue}>
-                {capturedAngles.length} captured ({capturedAngles.join(', ')})
+                {capturedAngles.length} captured{capturedAngles.length > 0 ? ` (${capturedAngles.join(', ')})` : ''}
               </Text>
+              {capturedAngles.length > 0 ? (
+                <View style={styles.reviewThumbs}>
+                  {capturedAngles.map((a) => {
+                    const p = capturedPhotos[a];
+                    return p ? (
+                      <Image key={a} source={{ uri: p.uri }} style={styles.reviewThumb} />
+                    ) : null;
+                  })}
+                </View>
+              ) : null}
             </View>
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Material</Text>
@@ -456,6 +499,13 @@ export default function NewAssessmentScreen() {
           </>
         )}
       </View>
+
+      <CameraCapture
+        visible={captureTarget !== null}
+        angle={captureTarget ?? 'front'}
+        onCancel={() => setCaptureTarget(null)}
+        onCaptured={handleCaptured}
+      />
     </View>
   );
 }
@@ -611,35 +661,12 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: WizardTheme.colors.primary, borderColor: WizardTheme.colors.primary },
   chipText: { fontSize: WizardTheme.typography.body, color: WizardTheme.colors.text },
   chipTextActive: { color: '#FFF' },
-  cameraPreview: {
-    height: 220,
-    backgroundColor: '#0F172A',
-    borderRadius: WizardTheme.radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    marginBottom: WizardTheme.spacing.md,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  gridOverlay: { ...StyleSheet.absoluteFillObject },
-  gridLineH: { position: 'absolute', top: '33%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
-  gridLineH2: { position: 'absolute', top: '66%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
-  gridLineV: { position: 'absolute', left: '33%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
-  gridLineV2: { position: 'absolute', left: '66%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
-  centerCross: { zIndex: 1 },
-  cameraLabel: {
-    position: 'absolute',
-    bottom: 12,
-    color: 'rgba(255,255,255,0.68)',
-    fontSize: WizardTheme.typography.helper,
-  },
   angleRow: {
-    minHeight: CONTROL_HEIGHT,
+    minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: WizardTheme.spacing.md,
-    paddingHorizontal: WizardTheme.spacing.md,
+    padding: WizardTheme.spacing.sm,
     backgroundColor: WizardTheme.colors.card,
     borderRadius: WizardTheme.radius.md,
     marginBottom: WizardTheme.spacing.sm,
@@ -647,10 +674,34 @@ const styles = StyleSheet.create({
     borderColor: WizardTheme.colors.border,
   },
   angleRowCaptured: { backgroundColor: '#EDF7EE', borderColor: '#9AD4A1' },
-  angleLabel: { flex: 1, fontSize: WizardTheme.typography.body, color: WizardTheme.colors.text, fontWeight: '600' },
+  angleLabel: { fontSize: WizardTheme.typography.body, color: WizardTheme.colors.text, fontWeight: '600' },
   angleLabelCaptured: { color: WizardTheme.colors.success, fontWeight: '700' },
-  angleTap: { fontSize: 12, fontWeight: '800', color: WizardTheme.colors.primary },
-  angleTapCaptured: { color: WizardTheme.colors.success },
+  angleMeta: { fontSize: 12, color: WizardTheme.colors.textMuted, marginTop: 2 },
+  angleThumb: { width: 52, height: 52, borderRadius: 8, backgroundColor: '#0F172A' },
+  angleThumbPlaceholder: {
+    width: 52, height: 52, borderRadius: 8,
+    backgroundColor: WizardTheme.colors.background,
+    borderWidth: 1, borderColor: WizardTheme.colors.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  angleActions: { flexDirection: 'row', gap: 6 },
+  angleActionBtn: {
+    width: 36, height: 36, borderRadius: 8,
+    backgroundColor: WizardTheme.colors.background,
+    borderWidth: 1, borderColor: WizardTheme.colors.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  captureBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: WizardTheme.colors.primary,
+    borderRadius: WizardTheme.radius.md,
+  },
+  captureBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  reviewThumbs: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10,
+  },
+  reviewThumb: { width: 72, height: 72, borderRadius: 8, backgroundColor: '#0F172A' },
   reviewSection: {
     backgroundColor: WizardTheme.colors.card,
     borderRadius: WizardTheme.radius.md,

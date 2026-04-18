@@ -25,7 +25,11 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
 )
-from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
+from sklearn.model_selection import (
+    RandomizedSearchCV,
+    StratifiedKFold,
+    train_test_split,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
@@ -37,10 +41,13 @@ ARTIFACTS_DIR = ML_ROOT / "artifacts"
 
 FEATURE_COLUMNS = [
     "year_built",
+    "building_age",
     "number_of_stories",
     "building_use",
     "soil_classification",
     "distance_to_fault_km",
+    "elevation_m",
+    "slope_deg",
     "previous_retrofit",
     "structural_system",
     "foundation_type",
@@ -59,11 +66,14 @@ def load_frame(path: Path) -> pd.DataFrame:
     return df
 
 
-def build_pipeline(*, rf_n_jobs: int = -1) -> Pipeline:
+def build_pipeline(*, rf_params: dict | None = None) -> Pipeline:
     numeric_features = [
         "year_built",
+        "building_age",
         "number_of_stories",
         "distance_to_fault_km",
+        "elevation_m",
+        "slope_deg",
         "previous_retrofit_as_int",
     ]
     categorical_features = [
@@ -74,47 +84,32 @@ def build_pipeline(*, rf_n_jobs: int = -1) -> Pipeline:
         "material",
     ]
 
-    numeric_transformer = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="median")),
-        ]
-    )
-    categorical_transformer = Pipeline(
-        [
-            (
-                "imputer",
-                SimpleImputer(strategy="constant", fill_value="unknown"),
-            ),
-            (
-                "onehot",
-                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
-            ),
-        ]
-    )
+    numeric_transformer = Pipeline([("imputer", SimpleImputer(strategy="median"))])
+    categorical_transformer = Pipeline([
+        ("imputer", SimpleImputer(strategy="constant", fill_value="unknown")),
+        ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+    ])
 
-    preprocessor = ColumnTransformer(
-        [
-            ("num", numeric_transformer, numeric_features),
-            ("cat", categorical_transformer, categorical_features),
-        ]
-    )
+    preprocessor = ColumnTransformer([
+        ("num", numeric_transformer, numeric_features),
+        ("cat", categorical_transformer, categorical_features),
+    ])
 
-    return Pipeline(
-        [
-            ("preprocess", preprocessor),
-            (
-                "classifier",
-                RandomForestClassifier(
-                    n_estimators=200,
-                    max_depth=None,
-                    min_samples_leaf=2,
-                    class_weight="balanced",
-                    random_state=42,
-                    n_jobs=rf_n_jobs,
-                ),
-            ),
-        ]
+    defaults = dict(
+        n_estimators=300,
+        max_depth=None,
+        min_samples_leaf=2,
+        class_weight="balanced",
+        random_state=42,
+        n_jobs=-1,
     )
+    if rf_params:
+        defaults.update(rf_params)
+
+    return Pipeline([
+        ("preprocess", preprocessor),
+        ("classifier", RandomForestClassifier(**defaults)),
+    ])
 
 
 def prepare_x(df: pd.DataFrame) -> pd.DataFrame:
@@ -124,10 +119,7 @@ def prepare_x(df: pd.DataFrame) -> pd.DataFrame:
     return x
 
 
-def train_one(
-    csv_name: str,
-    model_key: str,
-) -> None:
+def train_one(csv_name: str, model_key: str) -> None:
     path = DATA_DIR / csv_name
     if not path.exists():
         print(f"Missing {path}; run: python scripts/generate_synthetic_data.py", file=sys.stderr)
@@ -137,29 +129,46 @@ def train_one(
     X = prepare_x(df)
     y = df["label"].astype(str)
 
-    X_train, X_temp, y_train, y_temp = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X, y, test_size=0.15, random_state=42, stratify=y
     )
 
-    pipeline = build_pipeline()
-    pipeline.fit(X_train, y_train)
+    # --- Hyperparameter search ---
+    print(f"\n=== {model_key} ({csv_name}) ===")
+    print("Running RandomizedSearchCV (50 iterations, 5-fold)...", flush=True)
 
-    # Avoid nested joblib parallelism (CV outer × RF inner) — can hang on Windows.
+    param_distributions = {
+        "classifier__n_estimators": [200, 300, 400, 500],
+        "classifier__max_depth": [10, 15, 20, 25, 30, None],
+        "classifier__min_samples_leaf": [1, 2, 3, 5, 8],
+        "classifier__min_samples_split": [2, 4, 6, 8],
+        "classifier__max_features": ["sqrt", "log2", 0.5, 0.7, None],
+    }
+
+    base_pipeline = build_pipeline(rf_params={"n_jobs": 1})
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    cv_scores = cross_val_score(
-        build_pipeline(rf_n_jobs=1),
-        pd.concat([X_train, X_val], axis=0),
-        pd.concat([y_train, y_val], axis=0),
+
+    search = RandomizedSearchCV(
+        base_pipeline,
+        param_distributions,
+        n_iter=50,
         cv=skf,
         scoring="f1_macro",
-        n_jobs=1,
+        random_state=42,
+        n_jobs=-1,
+        verbose=0,
+        refit=True,
     )
-    print(f"\n=== {model_key} ({csv_name}) ===")
-    print(f"CV macro-F1 (5-fold, train+val): mean={cv_scores.mean():.4f} std={cv_scores.std():.4f}")
+    search.fit(X_trainval, y_trainval)
 
+    best_params = search.best_params_
+    cv_f1 = search.best_score_
+    print(f"Best CV macro-F1: {cv_f1:.4f}")
+    print(f"Best params: {best_params}")
+
+    pipeline = search.best_estimator_
+
+    # --- Evaluate on held-out test ---
     y_pred = pipeline.predict(X_test)
     macro_f1 = f1_score(y_test, y_pred, average="macro")
     print(f"Hold-out test macro-F1: {macro_f1:.4f}")
@@ -168,6 +177,7 @@ def train_one(
     print("Confusion matrix (test), labels order:", list(pipeline.classes_))
     print(confusion_matrix(y_test, y_pred, labels=list(pipeline.classes_)))
 
+    # --- Feature importances ---
     preprocess = pipeline.named_steps["preprocess"]
     clf = pipeline.named_steps["classifier"]
     feature_names = preprocess.get_feature_names_out()
@@ -176,12 +186,13 @@ def train_one(
         zip(feature_names, importances, strict=True),
         key=lambda t: t[1],
         reverse=True,
-    )[:25]
+    )[:30]
 
-    print("Top 25 feature importances (encoded space):")
+    print("Top 30 feature importances (encoded space):")
     for name, imp in importance_pairs:
         print(f"  {name}: {imp:.4f}")
 
+    # --- Save ---
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     model_path = ARTIFACTS_DIR / f"rf_{model_key}.joblib"
     joblib.dump(pipeline, model_path)
@@ -192,10 +203,10 @@ def train_one(
         "sklearn_version": sklearn.__version__,
         "trained_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_csv": path.relative_to(ML_ROOT).as_posix(),
-        "label_classes": list(pipeline.named_steps["classifier"].classes_),
+        "label_classes": list(clf.classes_),
         "feature_columns_raw": FEATURE_COLUMNS,
-        "cv_macro_f1_mean": float(cv_scores.mean()),
-        "cv_macro_f1_std": float(cv_scores.std()),
+        "best_hyperparameters": {k: (v if not isinstance(v, np.integer) else int(v)) for k, v in best_params.items()},
+        "cv_macro_f1": float(cv_f1),
         "test_macro_f1": float(macro_f1),
         "top_feature_importances": [
             {"feature": str(n), "importance": float(i)} for n, i in importance_pairs

@@ -1,2 +1,0 @@
-# Regenerate with: python train_tabular_rf.py
-*.joblib

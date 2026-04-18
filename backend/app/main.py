@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .models import Assessment, AssessmentImage, Building, Profile, get_db
 from .schemas import (
+    AIPredictionResult,
     AssessmentCreate,
     AssessmentDetailRead,
     AssessmentRead,
@@ -25,10 +26,17 @@ from .schemas import (
     ProfileRead,
     ProfileUpdate,
     SignupRequest,
+    TabularPredictPayload,
     TokenResponse,
 )
 from .security import get_current_user, require_roles
-from .services.ml_fusion_engine import process_assessment
+from .services.ml_fusion_engine import (
+    TabularInput,
+    predict_fused,
+    predict_image,
+    predict_tabular,
+    process_assessment,
+)
 from .supabase_client import get_supabase_admin
 
 MAX_IMAGES = 4
@@ -484,6 +492,128 @@ def review_assessment(
     db.commit()
     db.refresh(assessment)
     return assessment
+
+
+# =============================================================================
+# AI INFERENCE
+# =============================================================================
+
+def _payload_to_tabular_input(payload: TabularPredictPayload) -> TabularInput:
+    """Feed the richer fusion engine mapper so mobile/CLI vocabularies are normalized."""
+    from .services.ml_fusion_engine import build_tabular_input
+
+    return build_tabular_input(
+        building={
+            "year_built": payload.year_built,
+            "number_of_stories": payload.number_of_stories,
+            "building_use": payload.building_use.value,
+            "soil_classification": payload.soil_classification.value if payload.soil_classification else None,
+            "distance_to_fault_km": payload.distance_to_fault_km,
+            "previous_retrofit": payload.previous_retrofit,
+            "latitude": payload.latitude,
+            "longitude": payload.longitude,
+            "structural_system": payload.structural_system,
+            "foundation_type": payload.foundation_type,
+        },
+        structural_data={
+            "elevation_m": payload.elevation_m,
+            "slope_deg": payload.slope_deg,
+            "material": payload.material,
+            "structural_system": payload.structural_system,
+            "foundation_type": payload.foundation_type,
+        },
+    )
+
+
+@app.post("/api/ai/predict/image", response_model=AIPredictionResult)
+async def ai_predict_image(
+    phase: str = Form("pre"),
+    images: list[UploadFile] = File(..., description="1-4 building photos (JPEG/PNG)."),
+    _: AuthenticatedUser = Depends(get_current_user),
+):
+    if not images:
+        raise HTTPException(status_code=400, detail="At least one image is required.")
+    if len(images) > MAX_IMAGES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES} images allowed.")
+
+    blobs = [await img.read() for img in images]
+    try:
+        result = predict_image(blobs, phase)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return AIPredictionResult(
+        phase=phase,
+        label=result["label"],
+        confidence=result["confidence"],
+        probabilities=result["probabilities"],
+        image=result,
+    )
+
+
+@app.post("/api/ai/predict/tabular", response_model=AIPredictionResult)
+def ai_predict_tabular(
+    payload: TabularPredictPayload,
+    _: AuthenticatedUser = Depends(get_current_user),
+):
+    tabular = _payload_to_tabular_input(payload)
+    try:
+        result = predict_tabular(tabular, payload.phase.value)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return AIPredictionResult(
+        phase=payload.phase.value,
+        label=result["label"],
+        confidence=result["confidence"],
+        probabilities=result["probabilities"],
+        tabular=result,
+        feature_importance=result.get("feature_importance"),
+    )
+
+
+@app.post("/api/ai/predict/fused", response_model=AIPredictionResult)
+async def ai_predict_fused(
+    payload: str = Form(..., description="JSON-encoded TabularPredictPayload."),
+    images: list[UploadFile] = File(default=[]),
+    _: AuthenticatedUser = Depends(get_current_user),
+):
+    try:
+        tabular_payload = TabularPredictPayload.model_validate_json(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    if len(images) > MAX_IMAGES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES} images allowed.")
+
+    blobs = [await img.read() for img in images] if images else None
+    tabular_input = _payload_to_tabular_input(tabular_payload)
+
+    try:
+        result = predict_fused(
+            images=blobs,
+            tabular=tabular_input,
+            phase=tabular_payload.phase.value,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return AIPredictionResult(
+        phase=result["phase"],
+        label=result["label"],
+        confidence=result["confidence"],
+        probabilities=result["probabilities"],
+        weights=result.get("weights"),
+        image=result.get("image"),
+        tabular=result.get("tabular"),
+        feature_importance=(result.get("tabular") or {}).get("feature_importance"),
+    )
 
 
 # =============================================================================
