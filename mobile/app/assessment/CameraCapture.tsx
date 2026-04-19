@@ -14,7 +14,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Accelerometer } from 'expo-sensors';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageAngle } from '../../types';
-import { WizardTheme } from './wizardTheme';
+import { WizardTheme } from '../../constants/wizardTheme';
 import Text from '../../components/CustomText';
 
 export interface CapturedPhoto {

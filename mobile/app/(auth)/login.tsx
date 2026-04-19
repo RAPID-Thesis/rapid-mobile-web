@@ -7,11 +7,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
-  ImageBackground,
-  Image,
   ActivityIndicator,
-  useWindowDimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
@@ -22,11 +21,8 @@ const InterfaceTheme = {
   accent: Colors.primary,
   steel: '#334155',
 };
-const backgroundImage = require('../../assets/bumbum.png');
-const brandingImage = require('../../assets/bumbum.png');
 
 export default function LoginScreen() {
-  const { width, height } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -91,16 +87,12 @@ export default function LoginScreen() {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <ImageBackground
-        source={backgroundImage}
-        style={[styles.backgroundImage, { width, height }]}
-        imageStyle={styles.backgroundImageStyle}
-        resizeMode="cover"
-      >
-        <View style={styles.backgroundOverlay}>
-          <View style={styles.backgroundTint} />
-        </View>
-      </ImageBackground>
+      <LinearGradient
+        colors={['#1E4E8D', '#153A69', '#0F294A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
 
       <KeyboardAvoidingView
         style={styles.container}
@@ -109,11 +101,11 @@ export default function LoginScreen() {
         <View style={styles.screen}>
           <View style={styles.inner}>
             <View style={styles.formCard}>
-              <Image
-                source={brandingImage}
-                style={styles.cardLogo}
-              />
-              
+              <View style={styles.logoMark}>
+                <Ionicons name="shield-checkmark" size={36} color={Colors.primary} />
+              </View>
+              <Text style={styles.logoWordmark}>RAPID</Text>
+
               <Text style={styles.cardTitle}>Welcome</Text>
 
               <Text style={styles.cardSubtitle}>
@@ -235,45 +227,25 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     backgroundColor: 'transparent',
   },
-  backgroundImage: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  backgroundImageStyle: {
-    opacity:0.5
-  },
-  backgroundOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(77, 90, 118, 0.7)',
+  logoMark: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     justifyContent: 'center',
     alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: Spacing.xs,
+    borderWidth: 2,
+    borderColor: 'rgba(10, 77, 146, 0.2)',
   },
-  backgroundTint: {
-    width: '180%',
-    height: '180%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(15, 23, 42, 0.28)',
-    transform: [{ rotate: '-12deg' }],
-  },
-  imageCaption: {
-    backgroundColor: 'rgba(255,255,255,0.24)',
-    alignSelf: 'flex-start',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
-  },
-  imageCaptionLabel: {
-    color: '#FFFFFF',
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginBottom: 2,
-  },
-  imageCaptionTitle: {
-    color: '#FFFFFF',
-    fontSize: FontSize.sm,
-    fontWeight: '700',
+  logoWordmark: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 2,
+    color: InterfaceTheme.accent,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
   },
   metaBadge: {
     backgroundColor: 'rgba(229,231,235,0.9)',
@@ -298,15 +270,6 @@ const styles = StyleSheet.create({
     maxWidth: 300,
     alignSelf: 'center',
     width: '100%',
-  },
-  cardLogo: {
-    width: 86,
-    height: 86,
-    borderRadius: BorderRadius.full,
-    alignSelf: 'center',
-    marginBottom: Spacing.sm,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.95)',
   },
   cardEyebrow: {
     color: InterfaceTheme.accent,

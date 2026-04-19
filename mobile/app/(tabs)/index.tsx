@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
+import { getPendingOutboxCount } from '../../services/outbox';
 
 function StatCard({ icon, label, value, color }: { icon: string; label: string; value: number; color: string }) {
   return (
@@ -25,20 +27,27 @@ export default function HomeScreen() {
   const [stats, setStats] = useState({ total: 0, pending: 0, highRisk: 0, toSync: 0 });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      const { data } = await supabase.from('assessments').select('status, ai_fused_label');
-      const list = data ?? [];
-      setStats({
-        total: list.length,
-        pending: list.filter(a => a.status === 'pending-review').length,
-        highRisk: list.filter(a => a.ai_fused_label === 'high' || a.ai_fused_label === 'UNSAFE').length,
-        toSync: list.filter(a => a.status === 'pending-sync').length,
-      });
-      setLoading(false);
-    }
-    load();
+  const load = useCallback(async () => {
+    const [{ data }, outboxPending] = await Promise.all([
+      supabase.from('assessments').select('status, ai_fused_label'),
+      getPendingOutboxCount(),
+    ]);
+    const list = data ?? [];
+    setStats({
+      total: list.length,
+      pending: list.filter((a) => a.status === 'pending-review').length,
+      highRisk: list.filter((a) => a.ai_fused_label === 'high' || a.ai_fused_label === 'UNSAFE').length,
+      toSync: list.filter((a) => a.status === 'pending-sync').length + outboxPending,
+    });
+    setLoading(false);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      void load();
+    }, [load])
+  );
 
   const displayName = profile?.full_name || profile?.email || 'Inspector';
   const roleLabel = profile?.role?.toUpperCase() || 'INSPECTOR';

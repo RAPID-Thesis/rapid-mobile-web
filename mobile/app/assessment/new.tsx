@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -15,22 +15,17 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
-import { ImageAngle, AssessmentPhase, BuildingUse, SoilClass } from '../../types';
-import Step3StructuralData, { StructuralDataState, SoilClassOption } from './Step3StructuralData';
+import { ImageAngle, AssessmentPhase, BuildingUse } from '../../types';
+import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
 import { WizardTheme } from '../../constants/wizardTheme';
 import CameraCapture, { CapturedPhoto } from './CameraCapture';
 import Text from '../../components/CustomText';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../services/supabase';
-
-function mapSoilOptionToDb(option: SoilClassOption | ''): SoilClass | null {
-  if (!option) return null;
-  if (option.startsWith('Type A')) return 'B';
-  if (option.startsWith('Type C')) return 'C';
-  if (option.startsWith('Type D')) return 'D';
-  if (option.startsWith('Type E')) return 'E';
-  return null;
-}
+import NetInfo from '@react-native-community/netinfo';
+import { isApiUrlConfigured } from '../../services/api';
+import { predictOfflineHeuristic } from '../../services/localPredict';
+import { enqueueOutbox, processOutbox } from '../../services/outbox';
+import { submitAssessmentForMlSync, type WizardAssessmentSyncInput } from '../../services/sync';
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
@@ -41,6 +36,14 @@ const ANGLES: { key: ImageAngle; label: string; icon: string }[] = [
   { key: 'right', label: 'Right Side', icon: 'arrow-forward' },
   { key: 'closeup', label: 'Damage Close-up', icon: 'search' },
 ];
+
+async function canUploadToApiNow(): Promise<boolean> {
+  if (!isApiUrlConfigured()) return false;
+  const s = await NetInfo.fetch();
+  if (!s.isConnected) return false;
+  if (s.isInternetReachable === false) return false;
+  return true;
+}
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -114,6 +117,34 @@ export default function NewAssessmentScreen() {
     fallingHazard: false,
   });
 
+  const offlineEstimate = useMemo(() => {
+    if (step !== 3) return null;
+    const storiesParsed = parseInt(structuralData.stories, 10);
+    const yearParsed = structuralData.yearBuilt.trim()
+      ? parseInt(structuralData.yearBuilt, 10)
+      : NaN;
+    const stories = Number.isFinite(storiesParsed) && storiesParsed > 0 ? storiesParsed : 1;
+    const yearBuilt = Number.isFinite(yearParsed) ? yearParsed : null;
+    return predictOfflineHeuristic({
+      phase,
+      buildingUse,
+      yearBuilt,
+      numberOfStories: stories,
+      structuralData: {
+        primaryMaterial: structuralData.primaryMaterial,
+        structuralSystem: structuralData.structuralSystem,
+        soilClass: structuralData.soilClass,
+        topography: structuralData.topography,
+        condition: structuralData.condition,
+        verticalIrregularity: structuralData.verticalIrregularity,
+        planIrregularity: structuralData.planIrregularity,
+        poundingHazard: structuralData.poundingHazard,
+        fallingHazard: structuralData.fallingHazard,
+      },
+      imageCount: capturedAngles.length,
+    });
+  }, [step, phase, buildingUse, structuralData, capturedAngles.length]);
+
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -152,39 +183,9 @@ export default function NewAssessmentScreen() {
         ? parseInt(structuralData.yearBuilt, 10)
         : NaN;
 
-      const { data: existingBuilding, error: findErr } = await supabase
-        .from('buildings')
-        .select('id')
-        .eq('building_code', code)
-        .maybeSingle();
-
-      if (findErr) throw findErr;
-
-      let buildingId: string;
-      if (existingBuilding?.id) {
-        buildingId = existingBuilding.id;
-      } else {
-        const { data: inserted, error: buildingErr } = await supabase
-          .from('buildings')
-          .insert({
-            building_code: code,
-            address: address.trim(),
-            barangay: barangayVal,
-            municipality,
-            building_use: buildingUse,
-            number_of_stories: Number.isFinite(storiesParsed) && storiesParsed > 0 ? storiesParsed : 1,
-            year_built: Number.isFinite(yearParsed) ? yearParsed : null,
-            structural_system: structuralData.structuralSystem || null,
-            soil_classification: mapSoilOptionToDb(structuralData.soilClass),
-            created_by: session.user.id,
-          })
-          .select('id')
-          .single();
-
-        if (buildingErr) throw buildingErr;
-        if (!inserted?.id) throw new Error('Building was not created.');
-        buildingId = inserted.id;
-      }
+      const stories =
+        Number.isFinite(storiesParsed) && storiesParsed > 0 ? storiesParsed : 1;
+      const yearBuilt = Number.isFinite(yearParsed) ? yearParsed : null;
 
       const structural_data = {
         stories: structuralData.stories,
@@ -201,20 +202,64 @@ export default function NewAssessmentScreen() {
         capturedAngles,
       };
 
-      const { error: assessmentErr } = await supabase.from('assessments').insert({
-        building_id: buildingId,
-        inspector_id: session.user.id,
+      const imageUris = ANGLES.map((a) => capturedPhotos[a.key]?.uri).filter(
+        (u): u is string => Boolean(u)
+      );
+
+      const localPrediction = predictOfflineHeuristic({
         phase,
-        structural_data,
-        status: 'pending-review',
-        priority_score: 0,
+        buildingUse,
+        yearBuilt,
+        numberOfStories: stories,
+        structuralData: {
+          primaryMaterial: structuralData.primaryMaterial,
+          structuralSystem: structuralData.structuralSystem,
+          soilClass: structuralData.soilClass,
+          topography: structuralData.topography,
+          condition: structuralData.condition,
+          verticalIrregularity: structuralData.verticalIrregularity,
+          planIrregularity: structuralData.planIrregularity,
+          poundingHazard: structuralData.poundingHazard,
+          fallingHazard: structuralData.fallingHazard,
+        },
+        imageCount: imageUris.length,
       });
 
-      if (assessmentErr) throw assessmentErr;
+      const input: WizardAssessmentSyncInput = {
+        building_code: code,
+        address: address.trim(),
+        barangay: barangayVal,
+        municipality,
+        building_use: buildingUse,
+        number_of_stories: stories,
+        year_built: yearBuilt,
+        phase,
+        structural_data,
+        imageUris,
+      };
 
-      Alert.alert('Assessment saved', 'It will appear on the web dashboard for your team.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      if (await canUploadToApiNow()) {
+        try {
+          await submitAssessmentForMlSync(input);
+          await processOutbox();
+          Alert.alert(
+            'Assessment saved',
+            'The server is analyzing this record. It will appear on the web dashboard shortly.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          return;
+        } catch {
+          // Queue for retry when the API is down or unreachable.
+        }
+      }
+
+      await enqueueOutbox({ input, localPrediction });
+      void processOutbox();
+      Alert.alert(
+        'Saved on this device',
+        `Offline risk estimate: ${localPrediction.fusedLabel} (${Math.round(localPrediction.fusedConfidence * 100)}% confidence). It will upload to the web app when you are back online.`,
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Could not save assessment.';
       Alert.alert('Save failed', message);
@@ -410,12 +455,22 @@ export default function NewAssessmentScreen() {
             <Text style={styles.sectionTitle}>Review Assessment</Text>
 
             <View style={styles.offlineNotice}>
-              <Ionicons name="cloud-upload-outline" size={20} color={WizardTheme.colors.infoText} />
+              <Ionicons name="analytics-outline" size={20} color={WizardTheme.colors.infoText} />
               <Text style={styles.offlineText}>
-                Tap Save to upload this assessment to the server. It will show up in the web app for
-                reviewers.
+                Save sends this record to the server when the API is reachable. You always get an
+                on-device risk estimate below; full ResNet + tabular fusion runs after upload.
               </Text>
             </View>
+
+            {offlineEstimate ? (
+              <View style={styles.estimateCard}>
+                <Text style={styles.estimateEyebrow}>On-device estimate (offline-capable)</Text>
+                <Text style={styles.estimateLabel}>{offlineEstimate.fusedLabel}</Text>
+                <Text style={styles.estimateMeta}>
+                  {Math.round(offlineEstimate.fusedConfidence * 100)}% confidence
+                </Text>
+              </View>
+            ) : null}
 
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Phase</Text>
@@ -723,6 +778,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 6,
     lineHeight: 22,
+  },
+  estimateCard: {
+    backgroundColor: WizardTheme.colors.card,
+    borderRadius: WizardTheme.radius.md,
+    padding: WizardTheme.spacing.md,
+    marginBottom: WizardTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.primary,
+  },
+  estimateEyebrow: {
+    fontSize: 11,
+    color: WizardTheme.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.9,
+    fontWeight: '700',
+  },
+  estimateLabel: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: WizardTheme.colors.primary,
+    marginTop: 6,
+  },
+  estimateMeta: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+    marginTop: 4,
+    fontWeight: '600',
   },
   offlineNotice: {
     flexDirection: 'row',

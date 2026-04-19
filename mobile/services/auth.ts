@@ -23,7 +23,17 @@ export async function loginUser(
     password,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    const msg = error.message ?? String(error);
+    if (/network request failed/i.test(msg)) {
+      throw new Error(
+        'Cannot reach Supabase (network). Check: phone/emulator has internet; ' +
+          'if you use mobile/.env, EXPO_PUBLIC_SUPABASE_URL must be https://…supabase.co (restart Expo after edits). ' +
+          'Android emulator: cold-boot the AVD or try phone hotspot if Wi‑Fi blocks SSL.'
+      );
+    }
+    throw new Error(msg);
+  }
   if (!data.session || !data.user) throw new Error('Login failed.');
 
   // Session is valid as soon as sign-in succeeds. Do not block the UI on `profiles`:

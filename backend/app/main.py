@@ -617,8 +617,20 @@ async def ai_predict_fused(
 
 
 # =============================================================================
-# HEALTH
+# ROOT & HEALTH
 # =============================================================================
+
+@app.get("/")
+def root():
+    """Avoid 404 when opening the server base URL in a browser."""
+    return {
+        "service": "RAPID Backend API",
+        "version": "0.2.0",
+        "docs": "/docs",
+        "openapi": "/openapi.json",
+        "health": "/api/health",
+    }
+
 
 @app.get("/api/health")
 def health():

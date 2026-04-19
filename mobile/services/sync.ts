@@ -2,23 +2,34 @@ import { SyncQueueItem } from '../types';
 import { getUserToken } from './auth';
 import { buildApiUrl, parseApiError } from './api';
 
+/** Matches backend `AssessmentSyncPayload` (snake_case, phase = pre-earthquake | post-earthquake). */
 interface BackendAssessmentPayload {
   building_code: string;
   address: string;
   barangay: string;
+  municipality: string;
+  longitude: number;
+  latitude: number;
   building_use: string;
-  phase: 'Pre-Earthquake' | 'Post-Earthquake';
-  structural_data: {
-    primary_material: string;
-    structural_system: string;
-    soil_class: string;
-    topography: string;
-    irregularity_vertical: string;
-    irregularity_plan: string;
-    hazard_pounding: string;
-    hazard_falling: string;
-  };
-  status: 'pending_ml_review';
+  number_of_stories: number;
+  year_built: number | null;
+  phase: 'pre-earthquake' | 'post-earthquake';
+  structural_data: Record<string, unknown>;
+}
+
+export interface WizardAssessmentSyncInput {
+  building_code: string;
+  address: string;
+  barangay: string;
+  municipality: string;
+  longitude?: number;
+  latitude?: number;
+  building_use: string;
+  number_of_stories: number;
+  year_built: number | null;
+  phase: 'pre-earthquake' | 'post-earthquake';
+  structural_data: Record<string, unknown>;
+  imageUris: string[];
 }
 
 function guessMimeType(uri: string): string {
@@ -42,12 +53,21 @@ function buildFilename(uri: string, index: number): string {
 }
 
 export function buildAssessmentPayloadFromQueueItem(item: SyncQueueItem): BackendAssessmentPayload {
+  const phase =
+    item.assessmentPayload.phase === 'post-earthquake' ? 'post-earthquake' : 'pre-earthquake';
   return {
-    building_code: item.assessmentPayload.buildingId ?? `RADAR-${item.queueId}`,
+    building_code: (item.assessmentPayload as { buildingCode?: string }).buildingCode
+      ?? item.assessmentPayload.buildingId
+      ?? `RADAR-${item.queueId}`,
     address: 'Queued from mobile device for backend sync',
     barangay: 'TBD Barangay',
+    municipality: '',
+    longitude: 0,
+    latitude: 0,
     building_use: 'residential',
-    phase: item.assessmentPayload.phase === 'post-earthquake' ? 'Post-Earthquake' : 'Pre-Earthquake',
+    number_of_stories: 1,
+    year_built: null,
+    phase,
     structural_data: {
       primary_material: 'Reinforced Concrete',
       structural_system: 'Moment Resisting Frame',
@@ -58,8 +78,61 @@ export function buildAssessmentPayloadFromQueueItem(item: SyncQueueItem): Backen
       hazard_pounding: 'none',
       hazard_falling: 'none',
     },
-    status: 'pending_ml_review',
   };
+}
+
+/**
+ * Saves the assessment via the FastAPI backend so images go to storage and
+ * `process_assessment` runs ResNet + RF fusion + optional Gemini actions.
+ */
+export async function submitAssessmentForMlSync(input: WizardAssessmentSyncInput): Promise<unknown> {
+  const token = await getUserToken();
+  if (!token) {
+    throw new Error('No authentication token found. Please sign in again before saving.');
+  }
+
+  const payload: BackendAssessmentPayload = {
+    building_code: input.building_code,
+    address: input.address,
+    barangay: input.barangay,
+    municipality: input.municipality,
+    longitude: input.longitude ?? 0,
+    latitude: input.latitude ?? 0,
+    building_use: input.building_use,
+    number_of_stories: input.number_of_stories,
+    year_built: input.year_built,
+    phase: input.phase,
+    structural_data: input.structural_data,
+  };
+
+  const formData = new FormData();
+  formData.append('assessment', JSON.stringify(payload));
+
+  input.imageUris.forEach((uri, index) => {
+    formData.append(
+      'images',
+      {
+        uri,
+        name: buildFilename(uri, index),
+        type: guessMimeType(uri),
+      } as any
+    );
+  });
+
+  const response = await fetch(buildApiUrl('/api/assessments/sync'), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, 'Assessment sync failed.'));
+  }
+
+  return response.json();
 }
 
 export async function syncAssessmentQueueItem(item: SyncQueueItem): Promise<unknown> {

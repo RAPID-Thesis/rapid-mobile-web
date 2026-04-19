@@ -1,5 +1,9 @@
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
 
+export function isApiUrlConfigured(): boolean {
+  return API_BASE_URL.length > 0;
+}
+
 export function buildApiUrl(path: string): string {
   if (!API_BASE_URL) {
     throw new Error('Missing EXPO_PUBLIC_API_URL. Add it to mobile/.env before making API calls.');
