@@ -37,6 +37,75 @@ const ANGLES: { key: ImageAngle; label: string; icon: string }[] = [
   { key: 'closeup', label: 'Damage Close-up', icon: 'search' },
 ];
 
+function normalizeLocationTokens(raw: string): string[] {
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** LGU / barangay: short initials if several words; otherwise a clipped token (easy to say). */
+function acronymFromPhrase(raw: string, maxLen: number, fallback: string): string {
+  const tokens = normalizeLocationTokens(raw);
+  if (!tokens.length) return fallback;
+  if (tokens.length === 1) {
+    const w = tokens[0].replace(/[^A-Z0-9]/g, '');
+    if (!w) return fallback;
+    if (/^\d+$/.test(w)) return w.slice(-Math.min(maxLen, w.length));
+    return w.slice(0, maxLen);
+  }
+  let out = '';
+  for (const t of tokens) {
+    if (out.length >= maxLen) break;
+    const c = t.replace(/[^A-Z0-9]/g, '');
+    if (!c) continue;
+    out += c[0];
+  }
+  return out.slice(0, maxLen) || fallback;
+}
+
+/** Street line: up to a few digits + initials from street names (e.g. 12 Rizal → 12RZ). */
+function addressShortTag(addr: string, maxLen: number): string {
+  const tokens = normalizeLocationTokens(addr);
+  let digits = '';
+  const words: string[] = [];
+  for (const t of tokens) {
+    if (/^\d+$/.test(t)) digits += t;
+    else words.push(t.replace(/[^A-Z0-9]/g, ''));
+  }
+  digits = digits.replace(/\D/g, '').slice(0, 4);
+  let letters = '';
+  for (const w of words) {
+    if (letters.length >= 3) break;
+    if (w.length >= 2) letters += w[0];
+  }
+  let tag = `${digits}${letters}`.slice(0, maxLen);
+  if (!tag) {
+    const w0 = words[0] ?? '';
+    tag = w0.slice(0, Math.min(maxLen, 3));
+  } else if (!digits && (words[0]?.length ?? 0) >= 2 && tag.length < 2) {
+    tag = (words[0] ?? '').slice(0, Math.min(maxLen, 3));
+  }
+  return tag || 'SITE';
+}
+
+/**
+ * Short speakable code: roughly “LGU – barangay – spot on the street”
+ * (e.g. TAN-SJ-12RZ → Tanauan, San Jose, 12 Rizal…).
+ */
+function buildingCodeFromLocation(address: string, barangay: string, lguCodeHint: string): string {
+  const addr = address.trim();
+  if (!addr) return '';
+  const lgu = acronymFromPhrase(lguCodeHint, 4, 'LGU');
+  const br = acronymFromPhrase(barangay, 3, 'BG');
+  const spot = addressShortTag(addr, 5);
+  return `${lgu}-${br}-${spot}`;
+}
+
 async function canUploadToApiNow(): Promise<boolean> {
   if (!isApiUrlConfigured()) return false;
   const s = await NetInfo.fetch();
@@ -96,7 +165,6 @@ export default function NewAssessmentScreen() {
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<AssessmentPhase>('pre-earthquake');
-  const [buildingCode, setBuildingCode] = useState('');
   const [address, setAddress] = useState('');
   const [barangay, setBarangay] = useState('');
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
@@ -116,6 +184,11 @@ export default function NewAssessmentScreen() {
     poundingHazard: false,
     fallingHazard: false,
   });
+
+  const autoBuildingCode = useMemo(
+    () => buildingCodeFromLocation(address, barangay, profile?.lgu_code ?? ''),
+    [address, barangay, profile?.lgu_code]
+  );
 
   const offlineEstimate = useMemo(() => {
     if (step !== 3) return null;
@@ -175,7 +248,7 @@ export default function NewAssessmentScreen() {
 
     setSaving(true);
     try {
-      const code = buildingCode.trim();
+      const code = autoBuildingCode.trim();
       const municipality = (profile?.lgu_code ?? '').trim() || 'Unknown';
       const barangayVal = barangay.trim() || 'TBD';
       const storiesParsed = parseInt(structuralData.stories, 10);
@@ -269,7 +342,7 @@ export default function NewAssessmentScreen() {
   };
 
   const canProceed = () => {
-    if (step === 0) return buildingCode.length > 0 && address.length > 0;
+    if (step === 0) return autoBuildingCode.length > 0 && address.length > 0;
     if (step === 1) return capturedAngles.length >= 2;
     if (step === 2) {
       return Boolean(
@@ -336,11 +409,19 @@ export default function NewAssessmentScreen() {
 
             <Text style={styles.sectionTitle}>Building Information</Text>
             <Text style={styles.fieldLabel}>Building Code *</Text>
+            <Text style={styles.hint}>
+              Generated automatically from LGU, barangay, and address (short acronym style, e.g. TAN-SJ-12RZ).
+              Fill address (and barangay if you can) below — this field is read-only.
+            </Text>
             <TextInput
-              style={styles.input}
-              value={buildingCode}
-              onChangeText={setBuildingCode}
-              placeholder="e.g. TAAL-011"
+              style={[styles.input, styles.inputReadOnly]}
+              value={autoBuildingCode}
+              editable={false}
+              selectTextOnFocus={false}
+              showSoftInputOnFocus={false}
+              accessibilityState={{ disabled: true }}
+              accessibilityLabel={`Building code, read-only: ${autoBuildingCode || 'pending address'}`}
+              placeholder="Enter address below to generate"
               placeholderTextColor={WizardTheme.colors.textMuted}
             />
 
@@ -358,7 +439,7 @@ export default function NewAssessmentScreen() {
               style={styles.input}
               value={barangay}
               onChangeText={setBarangay}
-              placeholder="Barangay name"
+              placeholder="Barangay (optional; uses BG in code if empty)"
               placeholderTextColor={WizardTheme.colors.textMuted}
             />
 
@@ -481,7 +562,7 @@ export default function NewAssessmentScreen() {
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Building</Text>
               <Text style={styles.reviewValue}>
-                {buildingCode} — {address}
+                {autoBuildingCode} — {address}
               </Text>
             </View>
             <View style={styles.reviewSection}>
@@ -652,6 +733,10 @@ const styles = StyleSheet.create({
     fontSize: WizardTheme.typography.helper,
     color: WizardTheme.colors.textMuted,
     marginBottom: WizardTheme.spacing.md,
+  },
+  inputReadOnly: {
+    backgroundColor: WizardTheme.colors.background,
+    color: WizardTheme.colors.text,
   },
   infoBanner: {
     backgroundColor: WizardTheme.colors.infoBg,

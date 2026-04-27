@@ -73,23 +73,31 @@ export default function AssessmentDetailScreen() {
 
   const classLabel = assessment.ai_fused_label ?? 'Pending';
   const confidence = assessment.ai_fused_confidence;
-  const isUnsafe = classLabel === 'UNSAFE' || classLabel === 'high';
-  const isRestricted = classLabel === 'RESTRICTED' || classLabel === 'moderate';
-  const badgeColor = isUnsafe ? Colors.unsafe : isRestricted ? Colors.restricted : Colors.safe;
+  const lowerLabel = classLabel.toLowerCase();
+  const isUnsafe = lowerLabel === 'unsafe' || lowerLabel === 'high';
+  const isRestricted = lowerLabel === 'restricted' || lowerLabel === 'moderate';
+  const isPending = lowerLabel === 'pending';
+  const badgeColor = isUnsafe
+    ? Colors.unsafe
+    : isRestricted
+      ? Colors.restricted
+      : isPending
+        ? Colors.statusPendingReview
+        : Colors.safe;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <LinearGradient
         colors={[
           badgeColor,
-          isUnsafe ? '#7F1D1D' : isRestricted ? '#92400E' : '#166534',
+          isUnsafe ? '#7F1D1D' : isRestricted ? '#92400E' : isPending ? '#B45309' : '#166534',
         ]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.banner}
       >
         <Ionicons
-          name={isUnsafe ? 'alert-circle' : isRestricted ? 'warning' : 'checkmark-circle'}
+          name={isUnsafe ? 'alert-circle' : isRestricted || isPending ? 'warning' : 'checkmark-circle'}
           size={32}
           color="#FFF"
         />

@@ -1,0 +1,15 @@
+# Used when: docker build -f backend/Dockerfile .
+.git
+.github
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/.env
+**/.env.*
+mobile/node_modules
+web/node_modules
+node_modules
+*.md
+.cursor
+terminals

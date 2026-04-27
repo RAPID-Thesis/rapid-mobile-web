@@ -17,6 +17,7 @@ from sqlalchemy import (
     Uuid,
     create_engine,
 )
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -34,6 +35,34 @@ if not DATABASE_URL:
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# PostgreSQL native ENUMs (see supabase/migrations/001_initial_schema.sql). create_type=False: DB already has types.
+_user_role = PG_ENUM(
+    "admin", "engineer", "drrmo", "inspector", name="user_role", create_type=False
+)
+_building_use = PG_ENUM(
+    "residential",
+    "commercial",
+    "institutional",
+    "industrial",
+    "mixed",
+    name="building_use",
+    create_type=False,
+)
+_soil_class = PG_ENUM("A", "B", "C", "D", "E", "F", name="soil_class", create_type=False)
+_assessment_phase = PG_ENUM(
+    "pre-earthquake", "post-earthquake", name="assessment_phase", create_type=False
+)
+_assessment_status = PG_ENUM(
+    "pending-sync",
+    "pending-review",
+    "reviewed",
+    "report-generated",
+    name="assessment_status",
+    create_type=False,
+)
+_action_plan_source = PG_ENUM("gemini", "template-fallback", name="action_plan_source", create_type=False)
+_image_angle = PG_ENUM("front", "left", "right", "closeup", name="image_angle", create_type=False)
+
 
 class Base(DeclarativeBase):
     pass
@@ -45,7 +74,7 @@ class Profile(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
-    role: Mapped[str] = mapped_column(Text, nullable=False, default="inspector")
+    role: Mapped[str] = mapped_column(_user_role, nullable=False, default="inspector")
     lgu_code: Mapped[str] = mapped_column(Text, nullable=False, default="")
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -62,12 +91,12 @@ class Building(Base):
     municipality: Mapped[str] = mapped_column(Text, nullable=False)
     longitude: Mapped[float] = mapped_column(Double, nullable=False, default=0)
     latitude: Mapped[float] = mapped_column(Double, nullable=False, default=0)
-    building_use: Mapped[str] = mapped_column(Text, nullable=False, default="residential")
+    building_use: Mapped[str] = mapped_column(_building_use, nullable=False, default="residential")
     number_of_stories: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     year_built: Mapped[int | None] = mapped_column(Integer, nullable=True)
     structural_system: Mapped[str | None] = mapped_column(Text, nullable=True)
     foundation_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    soil_classification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    soil_classification: Mapped[str | None] = mapped_column(_soil_class, nullable=True)
     distance_to_fault_km: Mapped[float | None] = mapped_column(Double, nullable=True)
     previous_retrofit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -95,7 +124,7 @@ class Assessment(Base):
     inspector_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("profiles.id"), nullable=False
     )
-    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[str] = mapped_column(_assessment_phase, nullable=False)
     structural_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     ai_image_label: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -109,7 +138,7 @@ class Assessment(Base):
     ai_fusion_weights: Mapped[dict | None] = mapped_column(JSONB, default={"image": 0.5, "tabular": 0.5})
 
     action_recommendations: Mapped[list | None] = mapped_column(ARRAY(Text), nullable=True)
-    action_generated_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    action_generated_by: Mapped[str | None] = mapped_column(_action_plan_source, nullable=True)
     action_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -120,7 +149,7 @@ class Assessment(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     priority_score: Mapped[float] = mapped_column(Double, nullable=False, default=0)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending-sync")
+    status: Mapped[str] = mapped_column(_assessment_status, nullable=False, default="pending-sync")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
@@ -144,7 +173,7 @@ class AssessmentImage(Base):
     )
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
-    angle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    angle: Mapped[str | None] = mapped_column(_image_angle, nullable=True)
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)

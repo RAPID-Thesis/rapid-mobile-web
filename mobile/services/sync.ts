@@ -119,14 +119,23 @@ export async function submitAssessmentForMlSync(input: WizardAssessmentSyncInput
     );
   });
 
-  const response = await fetch(buildApiUrl('/api/assessments/sync'), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: formData,
-  });
+  const url = buildApiUrl('/api/assessments/sync');
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Cannot reach backend at ${url}. ${m} — Is uvicorn running (--host 0.0.0.0 --port 8000), firewall open, and phone on same Wi‑Fi?`
+    );
+  }
 
   if (!response.ok) {
     throw new Error(await parseApiError(response, 'Assessment sync failed.'));
@@ -155,14 +164,23 @@ export async function syncAssessmentQueueItem(item: SyncQueueItem): Promise<unkn
     );
   });
 
-  const response = await fetch(buildApiUrl('/api/assessments/sync'), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: formData,
-  });
+  const url = buildApiUrl('/api/assessments/sync');
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Cannot reach backend at ${url}. ${m} — Is uvicorn running (--host 0.0.0.0 --port 8000), firewall open, and phone on same Wi‑Fi?`
+    );
+  }
 
   if (!response.ok) {
     throw new Error(await parseApiError(response, 'Assessment sync failed.'));

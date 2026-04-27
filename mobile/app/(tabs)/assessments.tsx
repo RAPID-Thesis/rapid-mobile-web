@@ -1,11 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import { supabase } from '../../services/supabase';
+
+/** Must match `tabBarStyle` in `(tabs)/_layout.tsx` (floating bar). */
+const TAB_BAR_MARGIN_BOTTOM = 8;
+const TAB_BAR_HEIGHT = 68;
+const FAB_SIZE = 56;
+const FAB_GAP_ABOVE_TAB = 12;
+const LIST_GAP_BELOW_FAB = Spacing.md;
 
 interface AssessmentRow {
   id: string;
@@ -28,8 +36,11 @@ function getClassificationColor(label: string): string {
   const lower = label.toLowerCase();
   if (lower === 'unsafe' || lower === 'high') return Colors.unsafe;
   if (lower === 'restricted' || lower === 'moderate') return Colors.restricted;
+  if (lower === 'pending') return Colors.statusPendingReview;
   return Colors.safe;
 }
+
+type PhaseFilter = 'all' | 'pre-earthquake' | 'post-earthquake';
 
 function getStatusInfo(status: string): { label: string; color: string } {
   switch (status) {
@@ -83,9 +94,16 @@ function AssessmentCard({ item, buildings }: { item: AssessmentRow; buildings: B
 }
 
 export default function AssessmentsScreen() {
+  const insets = useSafeAreaInsets();
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   const [buildings, setBuildings] = useState<BuildingRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>('all');
+
+  const tabBarStack =
+    TAB_BAR_MARGIN_BOTTOM + TAB_BAR_HEIGHT + FAB_GAP_ABOVE_TAB + FAB_SIZE + LIST_GAP_BELOW_FAB;
+  const fabBottom = TAB_BAR_MARGIN_BOTTOM + TAB_BAR_HEIGHT + FAB_GAP_ABOVE_TAB;
+  const listPaddingBottom = insets.bottom + tabBarStack;
 
   useEffect(() => {
     async function load() {
@@ -104,14 +122,37 @@ export default function AssessmentsScreen() {
   const postEqCount = assessments.filter((a) => a.phase === 'post-earthquake').length;
   const urgentCount = assessments.filter((a) => a.priority_score >= 80).length;
 
+  const filteredAssessments = useMemo(() => {
+    if (phaseFilter === 'all') return assessments;
+    return assessments.filter((a) => a.phase === phaseFilter);
+  }, [assessments, phaseFilter]);
+
   return (
     <View style={styles.container}>
       <FlatList
-        data={assessments}
+        data={filteredAssessments}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <AssessmentCard item={item} buildings={buildings} />}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: listPaddingBottom }]}
         ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+        ListEmptyComponent={
+          !loading && assessments.length > 0 && filteredAssessments.length === 0 ? (
+            <View style={styles.filterEmpty}>
+              <Ionicons name="funnel-outline" size={32} color={Colors.textMuted} />
+              <Text style={styles.filterEmptyTitle}>No matches</Text>
+              <Text style={styles.filterEmptyBody}>
+                {phaseFilter === 'pre-earthquake'
+                  ? 'No Pre-Earthquake assessments. Try Post or All.'
+                  : phaseFilter === 'post-earthquake'
+                    ? 'No Post-Earthquake assessments. Try Pre or All.'
+                    : ''}
+              </Text>
+              <TouchableOpacity onPress={() => setPhaseFilter('all')} activeOpacity={0.85}>
+                <Text style={styles.filterEmptyLink}>Show all</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null
+        }
         ListHeaderComponent={
           <View>
             <LinearGradient
@@ -120,34 +161,66 @@ export default function AssessmentsScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.headerCard}
             >
-              <View style={styles.headerTopRow}>
-                <View style={styles.headerInfo}>
-                  <Text style={styles.headerTitle}>Assessment Queue</Text>
-                  <Text style={styles.header}>{assessments.length} total records</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.headerAction}
-                  onPress={() => router.push('/assessment/new')}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="add" size={16} color="#FFFFFF" />
-                  <Text style={styles.headerActionText}>New</Text>
-                </TouchableOpacity>
+              <View>
+                <Text style={styles.headerTitle}>Assessment Queue</Text>
+                <Text style={styles.header}>{assessments.length} total records</Text>
               </View>
               {assessments.length > 0 && (
-                <View style={styles.summaryChips}>
-                  <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>Pre-EQ {preEqCount}</Text>
-                  </View>
-                  <View style={styles.summaryChip}>
-                    <Text style={styles.summaryChipText}>Post-EQ {postEqCount}</Text>
+                <>
+                  <View style={styles.filterRow}>
+                    <TouchableOpacity
+                      style={[styles.filterChip, phaseFilter === 'all' && styles.filterChipActive]}
+                      onPress={() => setPhaseFilter('all')}
+                      activeOpacity={0.85}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          phaseFilter === 'all' && styles.filterChipTextActive,
+                        ]}
+                      >
+                        All ({assessments.length})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.filterChip, phaseFilter === 'pre-earthquake' && styles.filterChipActive]}
+                      onPress={() => setPhaseFilter('pre-earthquake')}
+                      activeOpacity={0.85}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          phaseFilter === 'pre-earthquake' && styles.filterChipTextActive,
+                        ]}
+                      >
+                        Pre ({preEqCount})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.filterChip, phaseFilter === 'post-earthquake' && styles.filterChipActive]}
+                      onPress={() => setPhaseFilter('post-earthquake')}
+                      activeOpacity={0.85}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          phaseFilter === 'post-earthquake' && styles.filterChipTextActive,
+                        ]}
+                      >
+                        Post ({postEqCount})
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                   {urgentCount > 0 && (
-                    <View style={[styles.summaryChip, styles.summaryChipUrgent]}>
-                      <Text style={[styles.summaryChipText, styles.summaryChipUrgentText]}>Urgent {urgentCount}</Text>
+                    <View style={styles.summaryChips}>
+                      <View style={[styles.summaryChip, styles.summaryChipUrgent]}>
+                        <Text style={[styles.summaryChipText, styles.summaryChipUrgentText]}>
+                          Urgent {urgentCount}
+                        </Text>
+                      </View>
                     </View>
                   )}
-                </View>
+                </>
               )}
             </LinearGradient>
             {loading ? (
@@ -173,8 +246,9 @@ export default function AssessmentsScreen() {
       />
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: insets.bottom + fabBottom }]}
         onPress={() => router.push('/assessment/new')}
+        accessibilityLabel="New assessment"
       >
         <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
@@ -184,7 +258,7 @@ export default function AssessmentsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { padding: Spacing.md },
+  list: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md },
   headerCard: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
@@ -196,18 +270,42 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
   header: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
-  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerInfo: { flex: 1 },
-  headerAction: {
+  filterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.primaryDark,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
   },
-  headerActionText: { color: '#FFFFFF', fontSize: FontSize.xs, fontWeight: '700' },
+  filterChip: {
+    backgroundColor: Colors.surfaceSoft,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primaryDark,
+  },
+  filterChipText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '700' },
+  filterChipTextActive: { color: '#FFFFFF' },
+  filterEmpty: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.md,
+  },
+  filterEmptyTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text, marginTop: Spacing.sm },
+  filterEmptyBody: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: Spacing.sm,
+  },
+  filterEmptyLink: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primaryDark },
   summaryChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.sm },
   summaryChip: {
     backgroundColor: Colors.surfaceSoft,
@@ -269,7 +367,6 @@ const styles = StyleSheet.create({
   emptyActionText: { color: '#FFFFFF', fontSize: FontSize.sm, fontWeight: '700' },
   fab: {
     position: 'absolute',
-    bottom: Spacing.lg,
     right: Spacing.lg,
     width: 56,
     height: 56,

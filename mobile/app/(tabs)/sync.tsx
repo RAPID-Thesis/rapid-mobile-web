@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import TextBody from '../../components/CustomText';
+import { isApiUrlConfigured } from '../../services/api';
 import { listOutbox, processOutbox, type OutboxItem } from '../../services/outbox';
 
 export default function SyncScreen() {
@@ -60,9 +61,23 @@ export default function SyncScreen() {
   }
 
   const queued = items.length;
+  const apiReady = isApiUrlConfigured();
 
   return (
     <View style={styles.container}>
+      {!apiReady ? (
+        <View style={styles.configWarning}>
+          <Ionicons name="warning-outline" size={22} color="#92400E" />
+          <View style={styles.configWarningText}>
+            <Text style={styles.configWarningTitle}>Backend URL not set</Text>
+            <TextBody style={styles.configWarningBody}>
+              Add EXPO_PUBLIC_API_URL in mobile/.env (use your dev machine LAN IP and backend port,
+              not localhost, on a physical phone). Restart Expo after editing. Without it, nothing
+              can reach the server so the web dashboard will stay empty.
+            </TextBody>
+          </View>
+        </View>
+      ) : null}
       <LinearGradient
         colors={['#1E4E8D', '#143A6B', '#102C50']}
         start={{ x: 0, y: 0 }}
@@ -123,13 +138,15 @@ export default function SyncScreen() {
                 <TextBody style={styles.rowMeta}>
                   Estimate: {item.localPrediction.fusedLabel} ·{' '}
                   {item.status === 'pending'
-                    ? 'Waiting for network'
+                    ? apiReady
+                      ? 'Waiting to upload'
+                      : 'Blocked — set EXPO_PUBLIC_API_URL'
                     : item.status === 'syncing'
                       ? 'Uploading…'
                       : 'Upload failed — retry'}
                 </TextBody>
                 {item.lastError ? (
-                  <TextBody style={styles.rowErr} numberOfLines={2}>
+                  <TextBody style={styles.rowErr} selectable numberOfLines={12}>
                     {item.lastError}
                   </TextBody>
                 ) : null}
@@ -147,6 +164,21 @@ export default function SyncScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  configWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: '#FEF3C7',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  configWarningText: { flex: 1 },
+  configWarningTitle: { fontSize: FontSize.sm, fontWeight: '800', color: '#92400E' },
+  configWarningBody: { marginTop: 4, fontSize: FontSize.xs, color: '#78350F' },
   healthCard: {
     backgroundColor: Colors.primaryDark,
     margin: Spacing.md,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
+import traceback
 import uuid
 from datetime import datetime, timezone
 
@@ -40,6 +42,8 @@ from .services.ml_fusion_engine import (
 from .supabase_client import get_supabase_admin
 
 MAX_IMAGES = 4
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="RAPID Backend API",
@@ -367,73 +371,89 @@ async def sync_assessment(
         )
 
     try:
-        payload = AssessmentSyncPayload.model_validate_json(assessment)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        try:
+            payload = AssessmentSyncPayload.model_validate_json(assessment)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
-    existing_building = db.scalar(
-        select(Building).where(Building.building_code == payload.building_code)
-    )
-
-    if existing_building:
-        building = existing_building
-    else:
-        building = Building(
-            building_code=payload.building_code,
-            address=payload.address,
-            barangay=payload.barangay,
-            municipality=payload.municipality,
-            longitude=payload.longitude,
-            latitude=payload.latitude,
-            building_use=payload.building_use.value,
-            number_of_stories=payload.number_of_stories,
-            year_built=payload.year_built,
-            created_by=user.id,
+        existing_building = db.scalar(
+            select(Building).where(Building.building_code == payload.building_code)
         )
-        db.add(building)
+
+        if existing_building:
+            building = existing_building
+        else:
+            building = Building(
+                building_code=payload.building_code,
+                address=payload.address,
+                barangay=payload.barangay,
+                municipality=payload.municipality,
+                longitude=payload.longitude,
+                latitude=payload.latitude,
+                building_use=payload.building_use.value,
+                number_of_stories=payload.number_of_stories,
+                year_built=payload.year_built,
+                created_by=user.id,
+            )
+            db.add(building)
+            db.flush()
+
+        db_assessment = Assessment(
+            building_id=building.id,
+            inspector_id=user.id,
+            phase=payload.phase.value,
+            structural_data=payload.structural_data,
+            status="pending-review",
+        )
+        db.add(db_assessment)
         db.flush()
 
-    db_assessment = Assessment(
-        building_id=building.id,
-        inspector_id=user.id,
-        phase=payload.phase.value,
-        structural_data=payload.structural_data,
-        status="pending-review",
-    )
-    db.add(db_assessment)
-    db.flush()
+        supabase = get_supabase_admin()
+        for upload in images:
+            original_name = upload.filename or "image.bin"
+            ext = original_name.rsplit(".", 1)[-1] if "." in original_name else "bin"
+            storage_name = f"{db_assessment.id}/{uuid.uuid4().hex}.{ext}"
 
-    supabase = get_supabase_admin()
-    for upload in images:
-        original_name = upload.filename or "image.bin"
-        ext = original_name.rsplit(".", 1)[-1] if "." in original_name else "bin"
-        storage_name = f"{db_assessment.id}/{uuid.uuid4().hex}.{ext}"
-
-        file_bytes = await upload.read()
-        supabase.storage.from_("assessment-images").upload(
-            storage_name, file_bytes, {"content-type": upload.content_type or "image/jpeg"}
-        )
-
-        db.add(
-            AssessmentImage(
-                assessment_id=db_assessment.id,
-                storage_path=storage_name,
-                original_filename=original_name,
+            file_bytes = await upload.read()
+            supabase.storage.from_("assessment-images").upload(
+                storage_name,
+                file_bytes,
+                {
+                    "content-type": upload.content_type or "image/jpeg",
+                    "upsert": "true",
+                },
             )
+
+            db.add(
+                AssessmentImage(
+                    assessment_id=db_assessment.id,
+                    storage_path=storage_name,
+                    original_filename=original_name,
+                )
+            )
+
+        db.commit()
+
+        created = db.scalar(
+            select(Assessment)
+            .options(selectinload(Assessment.images))
+            .where(Assessment.id == db_assessment.id)
         )
+        if created is None:
+            raise HTTPException(status_code=500, detail="Assessment saved but could not be reloaded.")
 
-    db.commit()
-
-    created = db.scalar(
-        select(Assessment)
-        .options(selectinload(Assessment.images))
-        .where(Assessment.id == db_assessment.id)
-    )
-    if created is None:
-        raise HTTPException(status_code=500, detail="Assessment saved but could not be reloaded.")
-
-    background_tasks.add_task(process_assessment, created.id)
-    return created
+        background_tasks.add_task(process_assessment, created.id)
+        return created
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("sync_assessment failed")
+        detail = f"{type(exc).__name__}: {exc}"
+        if os.getenv("EXPOSE_SYNC_TRACEBACK", "").lower() in ("1", "true", "yes"):
+            detail = f"{detail}\n{traceback.format_exc()}"
+        raise HTTPException(status_code=500, detail=detail[:4000]) from exc
 
 
 @app.get("/api/assessments", response_model=list[AssessmentRead])

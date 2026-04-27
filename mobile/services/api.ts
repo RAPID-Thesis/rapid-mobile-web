@@ -14,21 +14,42 @@ export function buildApiUrl(path: string): string {
 }
 
 export async function parseApiError(response: Response, fallbackMessage: string): Promise<string> {
+  const prefix = `HTTP ${response.status}`;
+  let raw: string;
   try {
-    const data = (await response.json()) as { detail?: string | { msg?: string }[] };
+    raw = await response.text();
+  } catch {
+    return `${prefix}: (no response body)`;
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return `${prefix}: ${fallbackMessage}`;
+  }
+
+  try {
+    const data = JSON.parse(trimmed) as { detail?: unknown };
     if (typeof data.detail === 'string') {
-      return data.detail;
+      return `${prefix}: ${data.detail}`;
     }
 
     if (Array.isArray(data.detail) && data.detail.length > 0) {
-      return data.detail
-        .map((item) => item.msg)
-        .filter((value): value is string => Boolean(value))
-        .join(', ');
+      const parts = data.detail.map((item: unknown) => {
+        if (item && typeof item === 'object' && 'msg' in item) {
+          const o = item as { msg?: string; loc?: unknown };
+          const loc = Array.isArray(o.loc) ? o.loc.join('.') : '';
+          const msg = o.msg ?? '';
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return JSON.stringify(item);
+      });
+      const joined = parts.filter(Boolean).join(' | ');
+      if (joined) return `${prefix}: ${joined}`;
     }
   } catch {
-    // Ignore parse errors and fall back to the default message.
+    // not JSON — show snippet below
   }
 
-  return fallbackMessage;
+  const snippet = trimmed.length > 280 ? `${trimmed.slice(0, 280)}…` : trimmed;
+  return `${prefix}: ${snippet}`;
 }

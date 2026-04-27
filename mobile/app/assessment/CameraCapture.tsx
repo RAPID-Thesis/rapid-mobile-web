@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -82,6 +83,11 @@ export default function CameraCapture({ visible, angle, onCancel, onCaptured }: 
 
   useEffect(() => {
     if (!visible) return;
+    // expo-sensors has no real Accelerometer native module on web — addListener throws.
+    if (Platform.OS === 'web') {
+      setTiltDeg(0);
+      return;
+    }
     Accelerometer.setUpdateInterval(ACCEL_SAMPLE_MS);
     const sub = Accelerometer.addListener(({ x, y, z }) => {
       // Tilt from vertical. When the phone is held upright taking a photo of a
