@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -31,8 +32,9 @@ def get_current_user(
     supabase = get_supabase_admin()
 
     try:
-        user_response = supabase.auth.get_user(token)
+        user_response = supabase.auth.get_user(jwt=token)
     except Exception as exc:
+        logger.warning("Supabase auth.get_user failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
@@ -40,6 +42,7 @@ def get_current_user(
         ) from exc
 
     if user_response is None or user_response.user is None:
+        logger.warning("Supabase auth.get_user returned no user (jwt may be invalid or revoked).")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
@@ -57,6 +60,10 @@ def get_current_user(
     )
 
     if not profile_resp.data:
+        logger.warning(
+            "No profiles row for user id=%s — insert a matching row in public.profiles.",
+            su_user.id,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User profile not found.",
