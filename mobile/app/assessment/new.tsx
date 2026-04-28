@@ -11,6 +11,7 @@ import {
   Platform,
   UIManager,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +27,11 @@ import { isApiUrlConfigured } from '../../services/api';
 import { predictOfflineHeuristic } from '../../services/localPredict';
 import { enqueueOutbox, processOutbox } from '../../services/outbox';
 import { submitAssessmentForMlSync, type WizardAssessmentSyncInput } from '../../services/sync';
+import {
+  getCurrentFix,
+  requestLocationPermission,
+  type LocationFix,
+} from '../../services/location';
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
@@ -170,6 +176,11 @@ export default function NewAssessmentScreen() {
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
   const [capturedPhotos, setCapturedPhotos] = useState<Partial<Record<ImageAngle, CapturedPhoto>>>({});
   const [captureTarget, setCaptureTarget] = useState<ImageAngle | null>(null);
+  const [coords, setCoords] = useState<LocationFix | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'requesting' | 'ready' | 'denied' | 'failed'>('idle');
+  const [gpsRefreshing, setGpsRefreshing] = useState(false);
+  const [gpsCanAskAgain, setGpsCanAskAgain] = useState(true);
+  const [gpsBypassed, setGpsBypassed] = useState(false);
   const capturedAngles = Object.keys(capturedPhotos) as ImageAngle[];
   const [structuralData, setStructuralData] = useState<StructuralDataState>({
     stories: '',
@@ -225,6 +236,35 @@ export default function NewAssessmentScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   }, [step]);
 
+  const refreshGpsFix = async () => {
+    setGpsBypassed(false);
+    setGpsStatus('requesting');
+    try {
+      const permission = await requestLocationPermission();
+      setGpsCanAskAgain(permission.canAskAgain);
+      if (!permission.granted) {
+        setCoords(null);
+        setGpsStatus('denied');
+        return;
+      }
+      const fix = await getCurrentFix();
+      if (!fix) {
+        setCoords(null);
+        setGpsStatus('failed');
+        return;
+      }
+      setCoords(fix);
+      setGpsStatus('ready');
+    } catch {
+      setCoords(null);
+      setGpsStatus('failed');
+    }
+  };
+
+  useEffect(() => {
+    void refreshGpsFix();
+  }, []);
+
   const openCapture = (angle: ImageAngle) => setCaptureTarget(angle);
 
   const handleCaptured = (photo: CapturedPhoto) => {
@@ -273,6 +313,8 @@ export default function NewAssessmentScreen() {
         poundingHazard: structuralData.poundingHazard,
         fallingHazard: structuralData.fallingHazard,
         capturedAngles,
+        gps_accuracy_m: coords?.accuracy_m ?? null,
+        gps_captured_at: coords?.capturedAt ?? null,
       };
 
       const imageUris = ANGLES.map((a) => capturedPhotos[a.key]?.uri).filter(
@@ -303,6 +345,8 @@ export default function NewAssessmentScreen() {
         address: address.trim(),
         barangay: barangayVal,
         municipality,
+        longitude: coords?.longitude ?? 0,
+        latitude: coords?.latitude ?? 0,
         building_use: buildingUse,
         number_of_stories: stories,
         year_built: yearBuilt,
@@ -342,7 +386,7 @@ export default function NewAssessmentScreen() {
   };
 
   const canProceed = () => {
-    if (step === 0) return autoBuildingCode.length > 0 && address.length > 0;
+    if (step === 0) return autoBuildingCode.length > 0 && address.length > 0 && (coords != null || gpsBypassed);
     if (step === 1) return capturedAngles.length >= 2;
     if (step === 2) {
       return Boolean(
@@ -433,6 +477,90 @@ export default function NewAssessmentScreen() {
               placeholder="Street address"
               placeholderTextColor={WizardTheme.colors.textMuted}
             />
+            <View style={styles.gpsBox}>
+              <Text style={styles.gpsTitle}>GPS coordinates *</Text>
+              <Text style={styles.gpsHint}>
+                RAPID uses your location to tag each assessment and derive elevation/slope features for AI.
+              </Text>
+              {gpsStatus === 'requesting' || gpsRefreshing ? (
+                <View style={styles.gpsRow}>
+                  <ActivityIndicator size="small" color={WizardTheme.colors.primary} />
+                  <Text style={styles.gpsBody}>Locating your device...</Text>
+                </View>
+              ) : null}
+              {gpsStatus === 'ready' && coords ? (
+                <View style={styles.gpsRow}>
+                  <Ionicons name="location" size={16} color={WizardTheme.colors.success} />
+                  <Text style={styles.gpsBody}>
+                    GPS: {coords.latitude.toFixed(6)}, {coords.longitude.toFixed(6)}
+                    {coords.accuracy_m != null ? ` (~${Math.round(coords.accuracy_m)} m)` : ''}
+                  </Text>
+                </View>
+              ) : null}
+              {gpsStatus === 'denied' ? (
+                <View style={styles.gpsAlertBox}>
+                  <Text style={styles.gpsAlertText}>
+                    Location access was denied. Allow it to avoid saving records with missing coordinates.
+                  </Text>
+                  <View style={styles.gpsActionRow}>
+                    <TouchableOpacity
+                      style={styles.gpsActionBtn}
+                      onPress={() => {
+                        setGpsRefreshing(true);
+                        void refreshGpsFix().finally(() => setGpsRefreshing(false));
+                      }}
+                    >
+                      <Text style={styles.gpsActionBtnText}>Try again</Text>
+                    </TouchableOpacity>
+                    {!gpsCanAskAgain ? (
+                      <TouchableOpacity style={styles.gpsActionBtn} onPress={() => void Linking.openSettings()}>
+                        <Text style={styles.gpsActionBtnText}>Open settings</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+              {gpsStatus === 'failed' ? (
+                <View style={styles.gpsWarnBox}>
+                  <Text style={styles.gpsWarnText}>
+                    Could not get a GPS fix. Retry in an open area with better signal.
+                  </Text>
+                  <View style={styles.gpsActionRow}>
+                    <TouchableOpacity
+                      style={styles.gpsActionBtn}
+                      onPress={() => {
+                        setGpsRefreshing(true);
+                        void refreshGpsFix().finally(() => setGpsRefreshing(false));
+                      }}
+                    >
+                      <Text style={styles.gpsActionBtnText}>Retry GPS</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.gpsActionBtn}
+                      onPress={() =>
+                        Alert.alert(
+                          'Skip GPS?',
+                          'Skipping GPS may weaken heatmap placement and elevation/slope-based model features. Continue anyway?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Skip GPS',
+                              style: 'destructive',
+                              onPress: () => {
+                                setGpsBypassed(true);
+                                setGpsStatus('failed');
+                              },
+                            },
+                          ]
+                        )
+                      }
+                    >
+                      <Text style={styles.gpsActionBtnText}>Skip GPS</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+            </View>
 
             <Text style={styles.fieldLabel}>Barangay</Text>
             <TextInput
@@ -938,4 +1066,76 @@ const styles = StyleSheet.create({
   },
   nextBtnDisabled: { backgroundColor: WizardTheme.colors.pending },
   nextBtnText: { color: '#FFF', fontSize: WizardTheme.typography.body, fontWeight: '800' },
+  gpsBox: {
+    marginTop: WizardTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.md,
+    padding: WizardTheme.spacing.md,
+    backgroundColor: WizardTheme.colors.background,
+    gap: 6,
+  },
+  gpsTitle: {
+    fontSize: WizardTheme.typography.label,
+    fontWeight: '700',
+    color: WizardTheme.colors.text,
+  },
+  gpsHint: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+  },
+  gpsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  gpsBody: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.text,
+    fontWeight: '600',
+  },
+  gpsAlertBox: {
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+    borderRadius: WizardTheme.radius.sm,
+    padding: WizardTheme.spacing.sm,
+    gap: 8,
+  },
+  gpsWarnBox: {
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+    borderRadius: WizardTheme.radius.sm,
+    padding: WizardTheme.spacing.sm,
+    gap: 8,
+  },
+  gpsAlertText: {
+    fontSize: WizardTheme.typography.helper,
+    color: '#991B1B',
+    fontWeight: '600',
+  },
+  gpsWarnText: {
+    fontSize: WizardTheme.typography.helper,
+    color: '#92400E',
+    fontWeight: '600',
+  },
+  gpsActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  gpsActionBtn: {
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: WizardTheme.colors.card,
+  },
+  gpsActionBtnText: {
+    fontSize: 12,
+    color: WizardTheme.colors.text,
+    fontWeight: '700',
+  },
 });

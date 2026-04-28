@@ -1,0 +1,11 @@
+---
+description: Global directives for state management and PRD tracking
+globs: ["*"]
+alwaysApply: true
+---
+# Project State & Execution Rules
+
+- **Source of Truth:** The `prd.md` file is the absolute source of truth for the project state.
+- **Pre-Flight Check:** Before proposing any architectural changes or writing new features, silently read `prd.md` to understand the current phase, completed tasks, and pending requirements. 
+- **Execution:** When given a task, break it down into logical steps based on the remaining requirements in `prd.md` and wait for confirmation before executing bulk file changes.
+- **Environment:** Assume a Python-heavy ecosystem for the machine learning backend.

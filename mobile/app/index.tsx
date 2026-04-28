@@ -1,12 +1,13 @@
 import { Redirect } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, isApprovedProfile } from '../context/AuthContext';
 import { Colors } from '../constants/theme';
 
 export default function Index() {
-  const { session, loading } = useAuth();
+  const { session, profile, loading, profileLoading } = useAuth();
 
-  if (loading) {
+  const showSpinner = loading || (Boolean(session) && profileLoading && !profile);
+  if (showSpinner) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -15,6 +16,9 @@ export default function Index() {
   }
 
   if (session) {
+    if (profile && !isApprovedProfile(profile)) {
+      return <Redirect href="/login?error=pending" />;
+    }
     return <Redirect href="/(tabs)" />;
   }
 

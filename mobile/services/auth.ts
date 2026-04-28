@@ -7,6 +7,7 @@ export interface UserProfile {
   role: 'admin' | 'engineer' | 'drrmo' | 'inspector';
   lgu_code: string;
   avatar_url: string | null;
+  verification_status?: 'pending' | 'approved' | 'rejected' | null;
 }
 
 export interface LoginResponse {
@@ -36,6 +37,20 @@ export async function loginUser(
   }
   if (!data.session || !data.user) throw new Error('Login failed.');
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('verification_status')
+    .eq('id', data.user.id)
+    .single();
+
+  // Backward compat: if column is missing entirely (older DB), treat as approved.
+  const status = profile?.verification_status;
+  const approved = status === undefined || status === null || status === 'approved';
+  if (!approved) {
+    await supabase.auth.signOut();
+    throw new Error('Your account is still pending admin approval.');
+  }
+
   // Session is valid as soon as sign-in succeeds. Do not block the UI on `profiles`:
   // that query can hang (RLS, network, Web) even when Auth shows the user as signed in.
   void supabase
@@ -55,8 +70,55 @@ export async function loginUser(
       role: (meta.role as UserProfile['role']) ?? 'inspector',
       lgu_code: typeof meta.lgu_code === 'string' ? meta.lgu_code : '',
       avatar_url: null,
+      verification_status: 'approved',
     },
   };
+}
+
+export async function signUpUser(input: {
+  email: string;
+  password: string;
+  full_name: string;
+  role: 'admin' | 'engineer' | 'inspector';
+}): Promise<void> {
+  const normalizedEmail = input.email.trim();
+  const fullName = input.full_name.trim();
+
+  const { data, error } = await supabase.auth.signUp({
+    email: normalizedEmail,
+    password: input.password,
+    options: {
+      data: {
+        full_name: fullName,
+        role: input.role,
+        lgu_code: '',
+      },
+    },
+  });
+
+  if (error) throw new Error(error.message ?? 'Unable to submit registration.');
+
+  // Defensive fallback: if the DB trigger didn't install/fire, ensure the
+  // profile row exists. RLS allows users to insert their own row.
+  const userId = data.user?.id;
+  if (userId) {
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert(
+        {
+          id: userId,
+          email: normalizedEmail,
+          full_name: fullName,
+          role: input.role,
+          lgu_code: '',
+          verification_status: 'pending',
+        },
+        { onConflict: 'id', ignoreDuplicates: true }
+      );
+    if (profileError) {
+      console.warn('Profile upsert after signup failed:', profileError.message);
+    }
+  }
 }
 
 export async function logoutUser(): Promise<void> {
@@ -94,5 +156,6 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
     role: profile.role,
     lgu_code: profile.lgu_code,
     avatar_url: profile.avatar_url,
+    verification_status: profile.verification_status,
   };
 }

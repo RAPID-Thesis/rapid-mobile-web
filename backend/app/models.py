@@ -77,6 +77,7 @@ class Profile(Base):
     role: Mapped[str] = mapped_column(_user_role, nullable=False, default="inspector")
     lgu_code: Mapped[str] = mapped_column(Text, nullable=False, default="")
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

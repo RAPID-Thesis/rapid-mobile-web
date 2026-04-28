@@ -22,8 +22,8 @@ export interface WizardAssessmentSyncInput {
   address: string;
   barangay: string;
   municipality: string;
-  longitude?: number;
-  latitude?: number;
+  longitude: number;
+  latitude: number;
   building_use: string;
   number_of_stories: number;
   year_built: number | null;
@@ -96,8 +96,8 @@ export async function submitAssessmentForMlSync(input: WizardAssessmentSyncInput
     address: input.address,
     barangay: input.barangay,
     municipality: input.municipality,
-    longitude: input.longitude ?? 0,
-    latitude: input.latitude ?? 0,
+    longitude: input.longitude,
+    latitude: input.latitude,
     building_use: input.building_use,
     number_of_stories: input.number_of_stories,
     year_built: input.year_built,

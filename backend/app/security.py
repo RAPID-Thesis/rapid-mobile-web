@@ -64,12 +64,19 @@ def get_current_user(
         )
 
     profile = profile_resp.data
+    if profile.get("verification_status") != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is still pending admin approval.",
+        )
+
     return AuthenticatedUser(
         id=su_user.id,
         email=profile["email"],
         full_name=profile["full_name"],
         role=profile["role"],
         lgu_code=profile["lgu_code"],
+        verification_status=profile["verification_status"],
     )
 
 

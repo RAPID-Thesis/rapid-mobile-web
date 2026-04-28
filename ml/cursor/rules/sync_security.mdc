@@ -1,0 +1,10 @@
+---
+description: Standards for API syncing, networking, and security
+alwaysApply: false
+---
+# Syncing and Security Engineering
+
+- **Data in Transit:** Enforce strict security for data states. All telemetry, predictions, and syncing data must be encrypted in transit. 
+- **API Framework:** When building syncing endpoints, utilize robust, modern frameworks (like FastAPI) with strict Pydantic models for data validation.
+- **Error Handling:** Implement robust retry mechanisms with exponential backoff for network syncing. If the hardware loses connection, predictions must be cached locally and synced once the connection is restored.
+- **Authentication:** Ensure all syncing endpoints require proper API key or token-based authentication. Do not leave endpoints exposed.

@@ -57,6 +57,7 @@ export default function HeatmapPage() {
       .map((a) => {
         const building = buildings.find((b) => b.id === a.building_id);
         if (!building) return null;
+        if (building.latitude === 0 || building.longitude === 0) return null;
         if (barangayFilter && building.barangay !== barangayFilter) return null;
         return {
           id: a.id,
@@ -74,7 +75,7 @@ export default function HeatmapPage() {
   }, [assessments, buildings, phaseFilter, riskFilter, barangayFilter]);
 
   const center: [number, number] = useMemo(() => {
-    if (markers.length === 0) return [13.879, 120.921];
+    if (markers.length === 0) return [14.8127, 121.0453];
     const lat = markers.reduce((s, m) => s + m!.position[0], 0) / markers.length;
     const lng = markers.reduce((s, m) => s + m!.position[1], 0) / markers.length;
     return [lat, lng];

@@ -1,0 +1,10 @@
+---
+description: Rules for handling the trained ML models and camera implementation
+alwaysApply: false
+---
+# Camera & Model Inference Standards
+
+- **Models are FROZEN:** The ResNet50 and Random Forest models are already fully trained. **Under no circumstances should you generate code for data augmentation, model training, or weight adjustment.**
+- **Inference Only:** Focus exclusively on loading the pre-trained weights (`.h5`, `.pt`, or `.joblib` files) safely and running efficient inference.
+- **Camera Implementation:** When writing camera logic (e.g., OpenCV, PiCamera), prioritize frame buffer management and memory efficiency to prevent memory leaks during continuous streaming.
+- **Preprocessing:** Ensure any frames captured by the camera strictly match the input tensor shapes and normalization pipelines expected by ResNet50 before passing them to the model.

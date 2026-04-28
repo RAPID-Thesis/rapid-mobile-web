@@ -128,6 +128,7 @@ def register(body: SignupRequest):
             full_name=profile.get("full_name", body.full_name),
             role=profile.get("role", body.role.value),
             lgu_code=profile.get("lgu_code", body.lgu_code),
+            verification_status=profile.get("verification_status", "pending"),
         ),
     )
 
@@ -160,6 +161,11 @@ def login(body: LoginRequest):
         .execute()
     )
     profile = profile_resp.data or {}
+    if profile.get("verification_status") != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is still pending admin approval.",
+        )
 
     return TokenResponse(
         access_token=result.session.access_token,
@@ -171,6 +177,7 @@ def login(body: LoginRequest):
             full_name=profile.get("full_name", ""),
             role=profile.get("role", "inspector"),
             lgu_code=profile.get("lgu_code", ""),
+            verification_status=profile.get("verification_status", "pending"),
         ),
     )
 

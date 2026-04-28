@@ -8,6 +8,8 @@ export type SyncStatus = 'queued' | 'syncing' | 'synced' | 'failed';
 export type RiskLevel = 'low' | 'moderate' | 'high';
 export type DamageClass = 'SAFE' | 'RESTRICTED' | 'UNSAFE';
 
+export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+
 export interface User {
   id: string;
   email: string;
@@ -15,6 +17,7 @@ export interface User {
   role: UserRole;
   lgu_code: string;
   avatar_url: string | null;
+  verification_status?: VerificationStatus | null;
   created_at: string;
   updated_at: string;
 }

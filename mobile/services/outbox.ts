@@ -95,6 +95,15 @@ export async function processOutbox(): Promise<void> {
   const pending = items.filter((i) => i.status === 'pending' || i.status === 'failed');
 
   for (const item of pending) {
+    if (item.input.latitude === 0 && item.input.longitude === 0) {
+      await replaceItem({
+        ...item,
+        status: 'failed',
+        lastError: 'GPS coordinates are missing (0,0). Re-capture location and resubmit.',
+      });
+      continue;
+    }
+
     const syncing: OutboxItem = {
       ...item,
       status: 'syncing',

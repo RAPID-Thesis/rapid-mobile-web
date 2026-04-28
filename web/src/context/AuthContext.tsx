@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useContext,
@@ -15,6 +16,7 @@ export interface UserProfile {
   role: 'admin' | 'engineer' | 'drrmo' | 'inspector';
   lgu_code: string;
   avatar_url: string | null;
+  verification_status?: 'pending' | 'approved' | 'rejected' | null;
 }
 
 interface AuthState {
@@ -22,6 +24,7 @@ interface AuthState {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  profileLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (
     email: string,
@@ -48,28 +51,16 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
   }
 }
 
-/** Never block auth UI on profile fetch — avoids endless spinner if DB hangs or RLS fails. */
-function finishAuthBootstrap(
-  s: Session | null,
-  setters: {
-    setSession: (v: Session | null) => void;
-    setUser: (v: User | null) => void;
-    setProfile: (v: UserProfile | null) => void;
-    setLoading: (v: boolean) => void;
-  },
-  cancelled: () => boolean
-) {
-  setters.setSession(s);
-  setters.setUser(s?.user ?? null);
-  if (!s?.user) {
-    setters.setProfile(null);
-    if (!cancelled()) setters.setLoading(false);
-    return;
-  }
-  if (!cancelled()) setters.setLoading(false);
-  void fetchProfile(s.user.id).then((p) => {
-    if (!cancelled()) setters.setProfile(p);
-  });
+/**
+ * Backward-compatible approval check. If the `verification_status` column has
+ * not been added yet (e.g., older database without the migration), treat the
+ * account as approved so existing users aren't accidentally locked out.
+ */
+export function isApprovedProfile(profile: UserProfile | null): boolean {
+  if (!profile) return false;
+  const status = profile.verification_status;
+  if (status === undefined || status === null) return true;
+  return status === 'approved';
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -77,16 +68,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const isCancelled = () => cancelled;
+
+    const handleSession = (s: Session | null) => {
+      setSession(s);
+      setUser(s?.user ?? null);
+
+      if (!s?.user) {
+        setProfile(null);
+        setProfileLoading(false);
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
+      setProfileLoading(true);
+      if (!cancelled) setLoading(false);
+
+      void fetchProfile(s.user.id).then((p) => {
+        if (cancelled) return;
+        setProfile(p);
+        setProfileLoading(false);
+
+        if (p && !isApprovedProfile(p)) {
+          void supabase.auth.signOut().then(() => {
+            if (cancelled) return;
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+          });
+        }
+      });
+    };
 
     supabase.auth
       .getSession()
       .then(({ data: { session: s } }) => {
         if (cancelled) return;
-        finishAuthBootstrap(s, { setSession, setUser, setProfile, setLoading }, isCancelled);
+        handleSession(s);
       })
       .catch(() => {
         if (!cancelled) setLoading(false);
@@ -95,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, s) => {
-      finishAuthBootstrap(s, { setSession, setUser, setProfile, setLoading }, isCancelled);
+      handleSession(s);
     });
 
     const failSafe = window.setTimeout(() => {
@@ -110,11 +131,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     if (error) throw error;
+    if (!data.user) throw new Error('Unable to sign in right now.');
+
+    const fetched = await fetchProfile(data.user.id);
+    if (!isApprovedProfile(fetched)) {
+      await supabase.auth.signOut();
+      throw new Error('Your account is still pending admin approval.');
+    }
   };
 
   const signUp = async (
@@ -122,12 +150,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     meta: { full_name: string; role: string; lgu_code: string }
   ) => {
-    const { error } = await supabase.auth.signUp({
-      email,
+    const normalizedEmail = email.trim();
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
       password,
       options: { data: meta },
     });
     if (error) throw error;
+
+    // Defensive: ensure the profile row exists even if the DB trigger isn't installed
+    // or it failed silently. RLS allows users to insert their own row (id = auth.uid()).
+    const userId = data.user?.id;
+    if (userId) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: userId,
+            email: normalizedEmail,
+            full_name: meta.full_name,
+            role: meta.role,
+            lgu_code: meta.lgu_code,
+            verification_status: 'pending',
+          },
+          { onConflict: 'id', ignoreDuplicates: true }
+        );
+      if (profileError) {
+        console.warn('Profile upsert after signup failed:', profileError.message);
+      }
+    }
   };
 
   const signOut = async () => {
@@ -139,7 +190,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, profile, loading, signIn, signUp, signOut }}
+      value={{
+        session,
+        user,
+        profile,
+        loading,
+        profileLoading,
+        signIn,
+        signUp,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>

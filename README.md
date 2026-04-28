@@ -102,7 +102,7 @@ Cold-start timing on the backend:
 ### Smoke test
 
 1. Log in to the web dashboard with a Supabase account
-2. Open the mobile app, capture two photos of any building, submit
+2. Open the mobile app, grant GPS permission on first use, capture two photos of any building, submit
 3. Within ~15 s the assessment appears on the dashboard with an `ai_fused_label`, probability bars, and an action plan
 
 If the label stays `null`, check `backend` logs — usually the model files are missing from `ml/artifacts/`.

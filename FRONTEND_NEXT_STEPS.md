@@ -171,12 +171,12 @@ which is fine for reads but not for backend-only endpoints like reviews.
 
 ## P1 — materially better demo
 
-### 5. Mobile: auto-fill GPS at the start of the wizard
+### 5. Mobile: GPS auto-fill at wizard start (implemented)
 
-Add one `useEffect` in `new.tsx` that calls `Location.requestForegroundPermissionsAsync`
-followed by `Location.getCurrentPositionAsync`, and show the captured lat/lon as a
-"GPS: 14.8127, 121.0453 — accurate to 8m" line under the Building Info step. Let
-the user override if the fix is bad.
+`new.tsx` now requests foreground location permission, captures a GPS fix at the
+start of the wizard, and includes latitude/longitude in the sync payload. This
+prevents zero-coordinate records and restores map placement plus SRTM-based
+elevation/slope enrichment server-side.
 
 ### 6. Mobile: list + detail via backend (consistent AI fields)
 

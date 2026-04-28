@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth, isApprovedProfile } from '../context/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { signIn, session, loading } = useAuth();
+  const location = useLocation();
+  const { signIn, session, profile, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(
+    typeof location.state?.message === 'string' ? location.state.message : ''
+  );
   const [submitting, setSubmitting] = useState(false);
 
-  if (!loading && session) {
+  if (!loading && session && profile && isApprovedProfile(profile)) {
     navigate('/', { replace: true });
     return null;
   }
@@ -83,6 +86,12 @@ export default function LoginPage() {
             {submitting ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+        <p className="text-center text-sm text-blue-200 mt-4">
+          Need an account?{' '}
+          <Link to="/register" className="font-semibold text-white hover:underline">
+            Sign up
+          </Link>
+        </p>
 
         <p className="text-center text-blue-400/60 text-xs mt-6">
           FEMA P-154 &bull; ATC-20 Compliant System

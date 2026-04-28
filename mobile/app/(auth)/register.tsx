@@ -8,84 +8,69 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import Text from '../../components/CustomText';
-import { loginUser } from '../../services/auth';
+import { signUpUser } from '../../services/auth';
 
 const InterfaceTheme = {
   accent: Colors.primary,
   steel: '#334155',
 };
 
-export default function LoginScreen() {
-  const params = useLocalSearchParams<{ error?: string }>();
+type RoleOption = 'inspector' | 'admin' | 'engineer';
+
+export default function RegisterScreen() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(
-    params.error === 'pending' ? 'Your account is still pending admin approval.' : ''
-  );
-  const [emailError, setEmailError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState<RoleOption>('inspector');
+  const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const canSubmit = useMemo(() => email.trim().length > 0 && password.length > 0, [email, password]);
+  const canSubmit = useMemo(
+    () => name.trim().length > 0 && email.trim().length > 0 && password.length > 0,
+    [name, email, password]
+  );
 
-  const handleEmailChange = (value: string) => {
-    setEmail(value);
-    if (emailError) setEmailError('');
-    if (error) setError('');
-  };
-
-  const handlePasswordChange = (value: string) => {
-    setPassword(value);
-    if (passwordError) setPasswordError('');
-    if (error) setError('');
-  };
-
-  const handleLogin = async () => {
+  const handleSubmit = async () => {
     const normalizedEmail = email.trim();
-    let hasError = false;
-
-    setError('');
-    setEmailError('');
-    setPasswordError('');
-
-    if (!normalizedEmail) {
-      setEmailError('Email is required');
-      hasError = true;
-    } else if (!normalizedEmail.includes('@')) {
-      setEmailError('Enter a valid email address');
-      hasError = true;
-    }
-
-    if (!password) {
-      setPasswordError('Password is required');
-      hasError = true;
-    }
-
-    if (hasError) {
-      setError('Please fix the highlighted fields.');
+    if (!name.trim() || !normalizedEmail || !password) {
+      setError('Please complete all required fields.');
       return;
     }
 
+    setError('');
     setIsSubmitting(true);
     try {
-      await loginUser(normalizedEmail, password);
-      router.replace('/');
-    } catch (loginError) {
+      await signUpUser({
+        email: normalizedEmail,
+        password,
+        full_name: name.trim(),
+        role,
+      });
+      Alert.alert(
+        'Submitted',
+        'Your account has been submitted and is pending review by an admin.',
+        [{ text: 'OK', onPress: () => router.replace('/login') }]
+      );
+    } catch (signupError) {
       setError(
-        loginError instanceof Error ? loginError.message : 'Unable to sign in. Please try again.'
+        signupError instanceof Error
+          ? signupError.message
+          : 'Unable to submit registration. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const roleOptions: RoleOption[] = ['inspector', 'admin', 'engineer'];
 
   return (
     <View style={styles.root}>
@@ -109,11 +94,9 @@ export default function LoginScreen() {
               </View>
               <Text style={styles.logoWordmark}>RAPID</Text>
 
-              <Text style={styles.cardTitle}>Welcome</Text>
-
+              <Text style={styles.cardTitle}>Create Account</Text>
               <Text style={styles.cardSubtitle}>
-                Sign in to continue building assessments, risk reviews, and post-earthquake
-                inspections.
+                Register your official account. New signups require admin approval before access.
               </Text>
 
               {error ? (
@@ -122,85 +105,85 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
+              <Text style={styles.label}>Name/Details</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.fieldHint}>Full name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  returnKeyType="next"
+                />
+              </View>
+
               <Text style={styles.label}>Government Email Address</Text>
               <View style={styles.inputGroup}>
                 <Text style={styles.fieldHint}>you@lgu.gov.ph</Text>
                 <TextInput
                   style={styles.input}
                   value={email}
-                  onChangeText={handleEmailChange}
+                  onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="email"
                   returnKeyType="next"
                 />
-                {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
               </View>
 
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputGroup}>
                 <Text style={styles.fieldHint}>Enter password</Text>
-                <View style={styles.passwordRow}>
-                  <TextInput
-                    style={[styles.input, styles.passwordInput]}
-                    value={password}
-                    onChangeText={handlePasswordChange}
-                    secureTextEntry={!showPassword}
-                    autoCorrect={false}
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
-                  />
-                  <TouchableOpacity
-                    style={styles.passwordToggle}
-                    onPress={() => setShowPassword((prev) => !prev)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.passwordToggleText}>
-                      {showPassword ? 'Hide' : 'Show'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSubmit}
+                />
               </View>
 
-              <View style={styles.inlineRow}>
-                <Text style={styles.inlineText}>Official LGU account required</Text>
-                <TouchableOpacity onPress={() => router.push('/register')} activeOpacity={0.8}>
-                  <Text style={styles.inlineTextAction}>Sign up</Text>
-                </TouchableOpacity>
+              <Text style={styles.label}>Role</Text>
+              <View style={styles.roleRow}>
+                {roleOptions.map((option) => {
+                  const selected = role === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      onPress={() => setRole(option)}
+                      style={[styles.roleChip, selected && styles.roleChipSelected]}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.roleChipText, selected && styles.roleChipTextSelected]}>
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <TouchableOpacity
                 style={[styles.button, (!canSubmit || isSubmitting) && styles.buttonDisabled]}
-                onPress={handleLogin}
+                onPress={handleSubmit}
                 disabled={!canSubmit || isSubmitting}
               >
                 {isSubmitting ? (
                   <View style={styles.buttonLoading}>
                     <ActivityIndicator size="small" color="#FFFFFF" />
-                    <Text style={styles.buttonText}>Signing In...</Text>
+                    <Text style={styles.buttonText}>Submitting...</Text>
                   </View>
                 ) : (
-                  <Text style={styles.buttonText}>Sign In</Text>
+                  <Text style={styles.buttonText}>Submit for Approval</Text>
                 )}
               </TouchableOpacity>
 
-              <View style={styles.metaRow}>
-                <View style={styles.metaBadge}>
-                  <Text style={styles.metaBadgeText}>Assessment</Text>
-                </View>
-                <View style={styles.metaBadge}>
-                  <Text style={styles.metaBadgeText}>Prediction</Text>
-                </View>
-              </View>
-
-              <View style={styles.securityBox}>
-                <Text style={styles.securityTitle}>Security Advisory</Text>
-                <Text style={styles.notice}>
-                  Access is limited to authorized personnel. System activity may be logged and
-                  monitored for operational and compliance purposes.
-                </Text>
+              <View style={styles.inlineRow}>
+                <Text style={styles.inlineText}>Already have an account?</Text>
+                <TouchableOpacity onPress={() => router.replace('/login')} activeOpacity={0.8}>
+                  <Text style={styles.inlineTextAction}>Sign in</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -252,19 +235,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.sm,
   },
-  metaBadge: {
-    backgroundColor: 'rgba(229,231,235,0.9)',
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  metaBadgeText: {
-    color: InterfaceTheme.steel,
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-  },
   formCard: {
     backgroundColor: 'rgba(255,255,255,0.82)',
     borderRadius: 22,
@@ -275,14 +245,6 @@ const styles = StyleSheet.create({
     maxWidth: 300,
     alignSelf: 'center',
     width: '100%',
-  },
-  cardEyebrow: {
-    color: InterfaceTheme.accent,
-    fontSize: FontSize.xs,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textAlign: 'center',
-    marginBottom: Spacing.xs,
   },
   cardTitle: {
     color: '#111827',
@@ -317,41 +279,37 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: Spacing.sm,
   },
-  passwordRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
   fieldHint: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
     marginBottom: 6,
     marginLeft: 2,
   },
-  fieldError: {
-    color: Colors.error,
-    fontSize: FontSize.xs,
-    marginTop: 6,
-    marginLeft: 2,
+  roleRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+    flexWrap: 'wrap',
   },
-  passwordInput: {
-    flex: 1,
-  },
-  passwordToggle: {
-    height: MinTouchTarget,
-    minWidth: 56,
+  roleChip: {
     borderWidth: 1,
     borderColor: 'rgba(203,213,225,0.9)',
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: BorderRadius.full,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.88)',
   },
-  passwordToggleText: {
-    color: InterfaceTheme.steel,
+  roleChipSelected: {
+    backgroundColor: '#1D4ED8',
+    borderColor: '#1D4ED8',
+  },
+  roleChipText: {
     fontSize: FontSize.xs,
     fontWeight: '700',
+    color: InterfaceTheme.steel,
+  },
+  roleChipTextSelected: {
+    color: '#FFFFFF',
   },
   inlineRow: {
     flexDirection: 'row',
@@ -375,7 +333,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: Spacing.lg,
+    marginTop: Spacing.sm,
     borderWidth: 1,
     borderColor: '#111827',
     ...platformShadow('#111827', { width: 0, height: 4 }, 0.16, 8, 3),
@@ -395,26 +353,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.4,
   },
-  securityBox: {
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderRadius: BorderRadius.sm,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(203,213,225,0.9)',
-  },
-  securityTitle: {
-    color: '#1F2937',
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-    marginBottom: Spacing.xs,
-    textAlign: 'center',
-  },
-  notice: {
-    color: '#4B5563',
-    fontSize: FontSize.xs,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
   error: {
     color: Colors.error,
     fontSize: FontSize.sm,
@@ -428,13 +366,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: Spacing.sm,
     marginBottom: Spacing.sm,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
   },
   footer: {
     color: 'rgba(255,255,255,0.92)',

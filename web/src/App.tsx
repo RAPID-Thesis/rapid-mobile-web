@@ -6,6 +6,7 @@ import AppLayout from './components/layout/AppLayout';
 import PageSpinner from './components/PageSpinner';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AssessmentsPage = lazy(() => import('./pages/AssessmentsPage'));
 const AssessmentDetailPage = lazy(() => import('./pages/AssessmentDetailPage'));
@@ -27,6 +28,14 @@ export default function App() {
             element={
               <Lazy>
                 <LoginPage />
+              </Lazy>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <Lazy>
+                <RegisterPage />
               </Lazy>
             }
           />

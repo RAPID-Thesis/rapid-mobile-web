@@ -74,6 +74,7 @@ class AuthenticatedUser(BaseModel):
     full_name: str
     role: str
     lgu_code: str
+    verification_status: str
 
 
 class TokenResponse(BaseModel):
@@ -95,6 +96,7 @@ class ProfileRead(BaseModel):
     role: str
     lgu_code: str
     avatar_url: str | None = None
+    verification_status: str
     created_at: datetime
     updated_at: datetime
 
