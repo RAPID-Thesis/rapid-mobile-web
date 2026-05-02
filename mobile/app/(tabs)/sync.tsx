@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,8 +17,10 @@ import { platformShadow } from '../../utils/platformShadow';
 import TextBody from '../../components/CustomText';
 import { isApiUrlConfigured } from '../../services/api';
 import { listOutbox, processOutbox, type OutboxItem } from '../../services/outbox';
+import { useAuth } from '../../context/AuthContext';
 
 export default function SyncScreen() {
+  const { session } = useAuth();
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -51,6 +54,11 @@ export default function SyncScreen() {
   }
 
   async function onSyncNow() {
+    if (!session) {
+      router.push('/login');
+      return;
+    }
+
     setSyncing(true);
     try {
       await processOutbox();
@@ -78,6 +86,18 @@ export default function SyncScreen() {
           </View>
         </View>
       ) : null}
+      {apiReady && !session ? (
+        <View style={styles.signInBanner}>
+          <Ionicons name="cloud-offline-outline" size={22} color="#1E40AF" />
+          <View style={styles.signInBannerText}>
+            <Text style={styles.signInBannerTitle}>Sign in or sign up to upload</Text>
+            <TextBody style={styles.signInBannerBody}>
+              Assessments stay saved on this device while offline. Upload starts after an approved
+              account signs in.
+            </TextBody>
+          </View>
+        </View>
+      ) : null}
       <LinearGradient
         colors={['#1E4E8D', '#143A6B', '#102C50']}
         start={{ x: 0, y: 0 }}
@@ -101,7 +121,7 @@ export default function SyncScreen() {
           ) : (
             <>
               <Ionicons name="cloud-upload-outline" size={20} color="#1E4E8D" />
-              <Text style={styles.syncBtnText}>Upload now</Text>
+              <Text style={styles.syncBtnText}>{session ? 'Upload now' : 'Sign in to upload'}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -138,9 +158,11 @@ export default function SyncScreen() {
                 <TextBody style={styles.rowMeta}>
                   Estimate: {item.localPrediction.fusedLabel} ·{' '}
                   {item.status === 'pending'
-                    ? apiReady
-                      ? 'Waiting to upload'
-                      : 'Blocked — set EXPO_PUBLIC_API_URL'
+                    ? !session
+                      ? 'Waiting — sign in to upload'
+                      : apiReady
+                        ? 'Waiting to upload'
+                        : 'Blocked — set EXPO_PUBLIC_API_URL'
                     : item.status === 'syncing'
                       ? 'Uploading…'
                       : 'Upload failed — retry'}
@@ -179,6 +201,21 @@ const styles = StyleSheet.create({
   configWarningText: { flex: 1 },
   configWarningTitle: { fontSize: FontSize.sm, fontWeight: '800', color: '#92400E' },
   configWarningBody: { marginTop: 4, fontSize: FontSize.xs, color: '#78350F' },
+  signInBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: '#DBEAFE',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+  },
+  signInBannerText: { flex: 1 },
+  signInBannerTitle: { fontSize: FontSize.sm, fontWeight: '800', color: '#1E3A8A' },
+  signInBannerBody: { marginTop: 4, fontSize: FontSize.xs, color: '#1E40AF' },
   healthCard: {
     backgroundColor: Colors.primaryDark,
     margin: Spacing.md,

@@ -7,6 +7,7 @@ import { getUserToken } from './auth';
 import { submitAssessmentForMlSync, type WizardAssessmentSyncInput } from './sync';
 
 const STORAGE_KEY = 'rapid_assessment_outbox_v1';
+let outboxRun: Promise<void> | null = null;
 
 export interface OutboxItem {
   id: string;
@@ -84,6 +85,15 @@ function isReachable(state: Awaited<ReturnType<typeof NetInfo.fetch>>): boolean 
  * Upload queued assessments to the FastAPI backend (then web dashboard via shared DB).
  */
 export async function processOutbox(): Promise<void> {
+  if (outboxRun) return outboxRun;
+
+  outboxRun = processOutboxOnce().finally(() => {
+    outboxRun = null;
+  });
+  return outboxRun;
+}
+
+async function processOutboxOnce(): Promise<void> {
   const net = await NetInfo.fetch();
   if (!isReachable(net)) return;
   if (!isApiUrlConfigured()) return;

@@ -22,11 +22,9 @@ import { WizardTheme } from '../../constants/wizardTheme';
 import CameraCapture, { CapturedPhoto } from './CameraCapture';
 import Text from '../../components/CustomText';
 import { useAuth } from '../../context/AuthContext';
-import NetInfo from '@react-native-community/netinfo';
-import { isApiUrlConfigured } from '../../services/api';
 import { predictOfflineHeuristic } from '../../services/localPredict';
 import { enqueueOutbox, processOutbox } from '../../services/outbox';
-import { submitAssessmentForMlSync, type WizardAssessmentSyncInput } from '../../services/sync';
+import { type WizardAssessmentSyncInput } from '../../services/sync';
 import {
   getCurrentFix,
   requestLocationPermission,
@@ -112,14 +110,6 @@ function buildingCodeFromLocation(address: string, barangay: string, lguCodeHint
   return `${lgu}-${br}-${spot}`;
 }
 
-async function canUploadToApiNow(): Promise<boolean> {
-  if (!isApiUrlConfigured()) return false;
-  const s = await NetInfo.fetch();
-  if (!s.isConnected) return false;
-  if (s.isInternetReachable === false) return false;
-  return true;
-}
-
 function StepIndicator({ current }: { current: number }) {
   return (
     <View style={styles.stepRow}>
@@ -167,7 +157,7 @@ function StepIndicator({ current }: { current: number }) {
 }
 
 export default function NewAssessmentScreen() {
-  const { session, profile } = useAuth();
+  const { profile } = useAuth();
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<AssessmentPhase>('pre-earthquake');
@@ -281,11 +271,6 @@ export default function NewAssessmentScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!session?.user) {
-      Alert.alert('Sign in required', 'Please sign in to save assessments to the server.');
-      return;
-    }
-
     setSaving(true);
     try {
       const code = autoBuildingCode.trim();
@@ -355,26 +340,11 @@ export default function NewAssessmentScreen() {
         imageUris,
       };
 
-      if (await canUploadToApiNow()) {
-        try {
-          await submitAssessmentForMlSync(input);
-          await processOutbox();
-          Alert.alert(
-            'Assessment saved',
-            'The server is analyzing this record. It will appear on the web dashboard shortly.',
-            [{ text: 'OK', onPress: () => router.back() }]
-          );
-          return;
-        } catch {
-          // Queue for retry when the API is down or unreachable.
-        }
-      }
-
       await enqueueOutbox({ input, localPrediction });
       void processOutbox();
       Alert.alert(
         'Saved on this device',
-        `Offline risk estimate: ${localPrediction.fusedLabel} (${Math.round(localPrediction.fusedConfidence * 100)}% confidence). It will upload to the web app when you are back online.`,
+        `Risk estimate: ${localPrediction.fusedLabel} (${Math.round(localPrediction.fusedConfidence * 100)}% confidence). This record is queued and will upload to the web app when sync is available.`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (e: unknown) {

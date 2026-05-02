@@ -23,15 +23,20 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 }
 
 export default function HomeScreen() {
-  const { profile } = useAuth();
+  const { session, profile } = useAuth();
   const [stats, setStats] = useState({ total: 0, pending: 0, highRisk: 0, toSync: 0 });
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [{ data }, outboxPending] = await Promise.all([
-      supabase.from('assessments').select('status, ai_fused_label'),
-      getPendingOutboxCount(),
-    ]);
+    const outboxPending = await getPendingOutboxCount();
+
+    if (!session) {
+      setStats({ total: 0, pending: 0, highRisk: 0, toSync: outboxPending });
+      setLoading(false);
+      return;
+    }
+
+    const { data } = await supabase.from('assessments').select('status, ai_fused_label');
     const list = data ?? [];
     setStats({
       total: list.length,
@@ -40,7 +45,7 @@ export default function HomeScreen() {
       toSync: list.filter((a) => a.status === 'pending-sync').length + outboxPending,
     });
     setLoading(false);
-  }, []);
+  }, [session]);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,8 +54,8 @@ export default function HomeScreen() {
     }, [load])
   );
 
-  const displayName = profile?.full_name || profile?.email || 'Inspector';
-  const roleLabel = profile?.role?.toUpperCase() || 'INSPECTOR';
+  const displayName = profile?.full_name || profile?.email || (session ? 'Inspector' : 'Field user');
+  const roleLabel = session ? profile?.role?.toUpperCase() || 'INSPECTOR' : 'OFFLINE MODE';
   const lguCode = profile?.lgu_code || '';
 
   return (

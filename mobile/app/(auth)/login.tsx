@@ -186,6 +186,17 @@ export default function LoginScreen() {
                 )}
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.offlineSecondary}
+                onPress={() => router.replace('/(tabs)')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.offlineSecondaryText}>Continue offline</Text>
+                <Text style={styles.offlineSecondaryHint}>
+                  Capture assessments now. Sign in or sign up later to upload.
+                </Text>
+              </TouchableOpacity>
+
               <View style={styles.metaRow}>
                 <View style={styles.metaBadge}>
                   <Text style={styles.metaBadgeText}>Assessment</Text>
@@ -394,6 +405,26 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     fontWeight: '800',
     letterSpacing: 0.4,
+  },
+  offlineSecondary: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    alignItems: 'center',
+  },
+  offlineSecondaryText: {
+    color: InterfaceTheme.accent,
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+  },
+  offlineSecondaryHint: {
+    color: '#64748B',
+    fontSize: FontSize.xs,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
   },
   securityBox: {
     marginTop: Spacing.md,

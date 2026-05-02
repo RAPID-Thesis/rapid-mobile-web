@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import { supabase } from '../../services/supabase';
+import { useAuth } from '../../context/AuthContext';
 
 /** Must match `tabBarStyle` in `(tabs)/_layout.tsx` (floating bar). */
 const TAB_BAR_MARGIN_BOTTOM = 8;
@@ -94,6 +96,7 @@ function AssessmentCard({ item, buildings }: { item: AssessmentRow; buildings: B
 }
 
 export default function AssessmentsScreen() {
+  const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   const [buildings, setBuildings] = useState<BuildingRow[]>([]);
@@ -105,18 +108,29 @@ export default function AssessmentsScreen() {
   const fabBottom = TAB_BAR_MARGIN_BOTTOM + TAB_BAR_HEIGHT + FAB_GAP_ABOVE_TAB;
   const listPaddingBottom = insets.bottom + tabBarStack;
 
-  useEffect(() => {
-    async function load() {
-      const [aRes, bRes] = await Promise.all([
-        supabase.from('assessments').select('id, building_id, phase, status, ai_fused_label, ai_fused_confidence, priority_score, created_at').order('created_at', { ascending: false }),
-        supabase.from('buildings').select('id, building_code, address'),
-      ]);
-      setAssessments((aRes.data as AssessmentRow[]) ?? []);
-      setBuildings((bRes.data as BuildingRow[]) ?? []);
+  const load = useCallback(async () => {
+    if (!session) {
+      setAssessments([]);
+      setBuildings([]);
       setLoading(false);
+      return;
     }
-    load();
-  }, []);
+
+    setLoading(true);
+    const [aRes, bRes] = await Promise.all([
+      supabase.from('assessments').select('id, building_id, phase, status, ai_fused_label, ai_fused_confidence, priority_score, created_at').order('created_at', { ascending: false }),
+      supabase.from('buildings').select('id, building_code, address'),
+    ]);
+    setAssessments((aRes.data as AssessmentRow[]) ?? []);
+    setBuildings((bRes.data as BuildingRow[]) ?? []);
+    setLoading(false);
+  }, [session]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   const preEqCount = assessments.filter((a) => a.phase === 'pre-earthquake').length;
   const postEqCount = assessments.filter((a) => a.phase === 'post-earthquake').length;
@@ -228,12 +242,25 @@ export default function AssessmentsScreen() {
             ) : assessments.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="clipboard-outline" size={36} color={Colors.textMuted} />
-                <Text style={styles.emptyTitle}>No assessments yet</Text>
-                <Text style={styles.emptyBody}>
-                  Start your first field record to build your assessment queue.
+                <Text style={styles.emptyTitle}>
+                  {session ? 'No assessments yet' : 'Offline field mode'}
                 </Text>
+                <Text style={styles.emptyBody}>
+                  {session
+                    ? 'Start your first field record to build your assessment queue.'
+                    : 'You can capture assessments without an account. Local records wait in the Sync tab until you sign in.'}
+                </Text>
+                {!session ? (
+                  <TouchableOpacity
+                    style={styles.emptyActionSecondary}
+                    onPress={() => router.push('/register')}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.emptyActionSecondaryText}>Sign up later</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
-                  style={styles.emptyAction}
+                  style={[styles.emptyAction, !session && { marginTop: Spacing.sm }]}
                   onPress={() => router.push('/assessment/new')}
                   activeOpacity={0.85}
                 >
@@ -365,6 +392,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   emptyActionText: { color: '#FFFFFF', fontSize: FontSize.sm, fontWeight: '700' },
+  emptyActionSecondary: {
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.primaryDark,
+  },
+  emptyActionSecondaryText: { color: Colors.primaryDark, fontSize: FontSize.sm, fontWeight: '700' },
   fab: {
     position: 'absolute',
     right: Spacing.lg,

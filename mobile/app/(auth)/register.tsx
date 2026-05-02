@@ -179,6 +179,17 @@ export default function RegisterScreen() {
                 )}
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.offlineSecondary}
+                onPress={() => router.replace('/(tabs)')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.offlineSecondaryText}>Skip for now and work offline</Text>
+                <Text style={styles.offlineSecondaryHint}>
+                  You can create an account later when internet is available.
+                </Text>
+              </TouchableOpacity>
+
               <View style={styles.inlineRow}>
                 <Text style={styles.inlineText}>Already have an account?</Text>
                 <TouchableOpacity onPress={() => router.replace('/login')} activeOpacity={0.8}>
@@ -352,6 +363,25 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     fontWeight: '800',
     letterSpacing: 0.4,
+  },
+  offlineSecondary: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+  },
+  offlineSecondaryText: {
+    color: InterfaceTheme.accent,
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+  },
+  offlineSecondaryHint: {
+    color: '#64748B',
+    fontSize: FontSize.xs,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
   },
   error: {
     color: Colors.error,
