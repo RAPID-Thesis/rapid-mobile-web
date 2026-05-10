@@ -1,6 +1,6 @@
 import { SyncQueueItem } from '../types';
 import { getUserToken } from './auth';
-import { buildApiUrl, parseApiError } from './api';
+import { buildApiUrl, fetchWithTimeout, parseApiError } from './api';
 
 /** Matches backend `AssessmentSyncPayload` (snake_case, phase = pre-earthquake | post-earthquake). */
 interface BackendAssessmentPayload {
@@ -122,7 +122,7 @@ export async function submitAssessmentForMlSync(input: WizardAssessmentSyncInput
   const url = buildApiUrl('/api/assessments/sync');
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -167,7 +167,7 @@ export async function syncAssessmentQueueItem(item: SyncQueueItem): Promise<unkn
   const url = buildApiUrl('/api/assessments/sync');
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         Accept: 'application/json',

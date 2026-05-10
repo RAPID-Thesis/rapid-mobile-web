@@ -14,7 +14,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rapid.app"
+      "bundleIdentifier": "com.rapid.app",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "package": "com.rapid.app",

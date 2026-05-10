@@ -101,6 +101,14 @@ async function processOutboxOnce(): Promise<void> {
   const token = await getUserToken();
   if (!token) return;
 
+  // Items left in 'syncing' mean a previous attempt died mid-flight (crash, timeout, kill).
+  // Reset them so they are retried this run.
+  const all = await readAll();
+  const stale = all.filter((i) => i.status === 'syncing');
+  for (const item of stale) {
+    await replaceItem({ ...item, status: 'failed', lastError: 'Previous upload interrupted — retrying.' });
+  }
+
   const items = await readAll();
   const pending = items.filter((i) => i.status === 'pending' || i.status === 'failed');
 
@@ -118,6 +126,7 @@ async function processOutboxOnce(): Promise<void> {
       ...item,
       status: 'syncing',
       attempts: item.attempts + 1,
+      lastError: undefined,
     };
     await replaceItem(syncing);
 

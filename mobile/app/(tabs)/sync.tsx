@@ -34,11 +34,19 @@ export default function SyncScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      (async () => {
+      void (async () => {
         setLoading(true);
-        await processOutbox();
-        if (!cancelled) await load();
-        if (!cancelled) setLoading(false);
+        try {
+          await load();
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+        // Never block the screen spinner on uploads — fetch can hang without a reachable LAN backend.
+        try {
+          await processOutbox();
+        } finally {
+          if (!cancelled) await load();
+        }
       })();
       return () => {
         cancelled = true;

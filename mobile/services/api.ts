@@ -1,5 +1,28 @@
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
 
+/** Sync uploads ML inference; allow generous budget but avoid indefinite hangs on bad routing/firewalls. */
+export const DEFAULT_API_FETCH_TIMEOUT_MS = 180_000;
+
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const timeoutMs = init.timeoutMs ?? DEFAULT_API_FETCH_TIMEOUT_MS;
+  const { timeoutMs: _omit, ...rest } = init;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...rest, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export function isApiUrlConfigured(): boolean {
   return API_BASE_URL.length > 0;
 }
