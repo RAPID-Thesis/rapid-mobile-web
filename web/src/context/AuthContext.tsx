@@ -3,10 +3,12 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { isWebPasswordResetRoute } from '../lib/authRecovery';
 import { supabase } from '../lib/supabase';
 
 export interface UserProfile {
@@ -32,6 +34,7 @@ interface AuthState {
     meta: { full_name: string; role: string; lgu_code: string }
   ) => Promise<void>;
   signOut: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -69,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const passwordRecoveryRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,7 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(p);
         setProfileLoading(false);
 
-        if (p && !isApprovedProfile(p)) {
+        const allowPendingDuringReset =
+          passwordRecoveryRef.current || isWebPasswordResetRoute();
+
+        if (p && !isApprovedProfile(p) && !allowPendingDuringReset) {
           void supabase.auth.signOut().then(() => {
             if (cancelled) return;
             setSession(null);
@@ -115,7 +122,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        passwordRecoveryRef.current = true;
+      }
+      if (event === 'SIGNED_OUT') {
+        passwordRecoveryRef.current = false;
+      }
       handleSession(s);
     });
 
@@ -188,6 +201,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
+  const requestPasswordReset = async (email: string) => {
+    const normalized = email.trim();
+    const site =
+      (import.meta.env.VITE_SITE_URL as string | undefined)?.trim() || window.location.origin;
+    const redirectTo = `${site.replace(/\/$/, '')}/reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(normalized, { redirectTo });
+    if (error) throw error;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -199,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signIn,
         signUp,
         signOut,
+        requestPasswordReset,
       }}
     >
       {children}

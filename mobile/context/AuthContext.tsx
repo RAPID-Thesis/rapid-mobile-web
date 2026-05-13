@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { getPasswordRecoveryBypass } from '../services/passwordRecovery';
 import { supabase } from '../services/supabase';
 import type { UserProfile } from '../services/auth';
 
@@ -63,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(p);
         setProfileLoading(false);
 
-        if (p && !isApprovedProfile(p)) {
+        if (p && !isApprovedProfile(p) && !getPasswordRecoveryBypass()) {
           void supabase.auth.signOut().then(() => {
             if (cancelled) return;
             setSession(null);

@@ -152,7 +152,8 @@ export default function AssessmentDetailPage() {
     );
   }
 
-  const classLabel = assessment.ai_fused_label ?? 'Pending';
+  const aiLabel = assessment.ai_fused_label ?? 'Pending';
+  const classLabel = assessment.override_classification ?? assessment.ai_fused_label ?? 'Pending';
   const cls = getClassColor(classLabel);
   const structural = (assessment.structural_data ?? {}) as Record<string, unknown>;
 
@@ -164,10 +165,25 @@ export default function AssessmentDetailPage() {
 
       <div className={`${cls.bg} rounded-xl p-6 text-white flex items-center justify-between mb-6 shadow-sm`}>
         <div>
-          <p className="text-sm opacity-80">Fused classification</p>
+          <p className="text-sm opacity-80">
+            {assessment.override_classification ? 'Final classification' : 'Fused classification'}
+          </p>
           <p className="text-3xl font-black">{classLabel.toUpperCase()}</p>
-          {assessment.ai_fused_confidence != null && (
-            <p className="text-sm opacity-80">{(assessment.ai_fused_confidence * 100).toFixed(1)}% confidence</p>
+          {assessment.override_classification ? (
+            assessment.ai_fused_label != null ? (
+              <p className="text-sm opacity-80">
+                AI fused was {aiLabel.toUpperCase()}
+                {assessment.ai_fused_confidence != null
+                  ? ` (${(assessment.ai_fused_confidence * 100).toFixed(1)}% confidence)`
+                  : ''}
+              </p>
+            ) : (
+              <p className="text-sm opacity-80">Engineer override — no AI fused result on record</p>
+            )
+          ) : (
+            assessment.ai_fused_confidence != null && (
+              <p className="text-sm opacity-80">{(assessment.ai_fused_confidence * 100).toFixed(1)}% confidence</p>
+            )
           )}
         </div>
         <div className="text-right">

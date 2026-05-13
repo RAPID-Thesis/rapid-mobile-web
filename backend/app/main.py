@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .models import Assessment, AssessmentImage, Building, Profile, get_db
 from .schemas import (
+    AdminDeleteUserBody,
     AIPredictionResult,
     AssessmentCreate,
     AssessmentDetailRead,
@@ -39,7 +40,7 @@ from .services.ml_fusion_engine import (
     predict_tabular,
     process_assessment,
 )
-from .supabase_client import get_supabase_admin
+from .supabase_client import get_supabase_admin, get_supabase_public
 
 MAX_IMAGES = 4
 
@@ -225,6 +226,60 @@ def update_user(
     db.commit()
     db.refresh(profile)
     return profile
+
+
+@app.post("/api/users/{user_id}/delete", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user_account(
+    user_id: uuid.UUID,
+    body: AdminDeleteUserBody,
+    db: Session = Depends(get_db),
+    current: AuthenticatedUser = Depends(require_roles("admin")),
+):
+    """Permanently remove a Supabase auth user (and cascaded profile). Requires admin password."""
+    if user_id == current.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account.")
+
+    target_profile = db.get(Profile, user_id)
+    if target_profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    if target_profile.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin accounts cannot be deleted through this action.",
+        )
+
+    public = get_supabase_public()
+    try:
+        sign_in = public.auth.sign_in_with_password(
+            {"email": current.email, "password": body.password},
+        )
+    except Exception as exc:
+        logger.warning("delete_user_account: password check failed for admin %s: %s", current.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password.",
+        ) from exc
+
+    if sign_in.user is None or str(sign_in.user.id) != str(current.id):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password.")
+
+    admin = get_supabase_admin()
+    try:
+        admin.auth.admin.delete_user(str(user_id), should_soft_delete=False)
+    except Exception as exc:
+        err = str(exc).lower()
+        logger.exception("delete_user_account: Supabase delete_user failed for %s", user_id)
+        if "foreign key" in err or "violates foreign key" in err or "23503" in err:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This user cannot be deleted while related records still exist (for example assessments they created). Remove or archive that data first.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not delete user account. Check server logs.",
+        ) from exc
+
+    return None
 
 
 # =============================================================================

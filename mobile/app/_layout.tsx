@@ -13,6 +13,7 @@ import { Colors, Typography } from '../constants/theme';
 import { TypographyProvider } from '../context/TypographyContext';
 import { AuthProvider } from '../context/AuthContext';
 import { SyncOnReconnect } from '../components/SyncOnReconnect';
+import PasswordRecoveryLinkHandler from '../components/PasswordRecoveryLinkHandler';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -39,6 +40,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <SyncOnReconnect />
+      <PasswordRecoveryLinkHandler />
       <TypographyProvider value={{ interLoaded }}>
         <StatusBar style="dark" />
         <Stack

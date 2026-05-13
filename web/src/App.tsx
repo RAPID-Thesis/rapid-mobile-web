@@ -7,12 +7,15 @@ import PageSpinner from './components/PageSpinner';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AssessmentsPage = lazy(() => import('./pages/AssessmentsPage'));
 const AssessmentDetailPage = lazy(() => import('./pages/AssessmentDetailPage'));
 const HeatmapPage = lazy(() => import('./pages/HeatmapPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
+const AdminSettingsPage = lazy(() => import('./pages/AdminSettingsPage'));
 
 function Lazy({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageSpinner label="Loading…" />}>{children}</Suspense>;
@@ -36,6 +39,22 @@ export default function App() {
             element={
               <Lazy>
                 <RegisterPage />
+              </Lazy>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <Lazy>
+                <ForgotPasswordPage />
+              </Lazy>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <Lazy>
+                <ResetPasswordPage />
               </Lazy>
             }
           />
@@ -92,6 +111,14 @@ export default function App() {
                 element={
                   <Lazy>
                     <UsersPage />
+                  </Lazy>
+                }
+              />
+              <Route
+                path="/admin/settings"
+                element={
+                  <Lazy>
+                    <AdminSettingsPage />
                   </Lazy>
                 }
               />

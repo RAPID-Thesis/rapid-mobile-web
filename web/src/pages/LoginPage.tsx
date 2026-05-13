@@ -1,30 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, isApprovedProfile } from '../context/AuthContext';
+
+type LoginLocationState = {
+  message?: string;
+  flashType?: 'success' | 'error';
+};
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const state = location.state as LoginLocationState | null;
   const { signIn, session, profile, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(
-    typeof location.state?.message === 'string' ? location.state.message : ''
-  );
+  const [flash, setFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(() => {
+    const msg = typeof state?.message === 'string' ? state.message : '';
+    if (!msg) return null;
+    return { type: state?.flashType === 'success' ? 'success' : 'error', text: msg };
+  });
   const [submitting, setSubmitting] = useState(false);
 
-  if (!loading && session && profile && isApprovedProfile(profile)) {
-    navigate('/', { replace: true });
+  const redirectHome =
+    !loading && Boolean(session && profile && isApprovedProfile(profile));
+
+  useEffect(() => {
+    if (redirectHome) {
+      navigate('/', { replace: true });
+    }
+  }, [redirectHome, navigate]);
+
+  if (redirectHome) {
     return null;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setError('Please enter email and password');
+      setFlash({ type: 'error', text: 'Please enter email and password' });
       return;
     }
-    setError('');
+    setFlash(null);
     setSubmitting(true);
     try {
       await signIn(email, password);
@@ -32,7 +48,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Unable to sign in right now.';
-      setError(message);
+      setFlash({ type: 'error', text: message });
     } finally {
       setSubmitting(false);
     }
@@ -52,8 +68,16 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-xl p-8">
           <h2 className="text-xl font-bold text-slate-800 mb-6">Sign in to Portal</h2>
 
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
+          {flash && (
+            <div
+              className={`text-sm rounded-lg p-3 mb-4 ${
+                flash.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-red-50 text-red-600'
+              }`}
+            >
+              {flash.text}
+            </div>
           )}
 
           <div className="mb-4">
@@ -67,7 +91,7 @@ export default function LoginPage() {
             />
           </div>
 
-          <div className="mb-6">
+          <div className="mb-2">
             <label className="block text-sm font-semibold text-slate-700 mb-1">Password</label>
             <input
               type="password"
@@ -76,6 +100,14 @@ export default function LoginPage() {
               className="w-full h-12 px-4 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Enter password"
             />
+          </div>
+          <div className="mb-6 text-right">
+            <Link
+              to="/forgot-password"
+              className="text-sm font-semibold text-blue-600 hover:underline"
+            >
+              Forgot password?
+            </Link>
           </div>
 
           <button

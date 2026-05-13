@@ -107,6 +107,12 @@ class ProfileUpdate(BaseModel):
     lgu_code: str | None = None
 
 
+class AdminDeleteUserBody(BaseModel):
+    """Re-verify the signed-in admin's Supabase password before destructive delete."""
+
+    password: str = Field(..., min_length=1, max_length=256)
+
+
 # -- Building --
 
 class BuildingCreate(BaseModel):

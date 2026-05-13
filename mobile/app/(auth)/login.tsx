@@ -23,11 +23,16 @@ const InterfaceTheme = {
 };
 
 export default function LoginScreen() {
-  const params = useLocalSearchParams<{ error?: string }>();
+  const params = useLocalSearchParams<{ error?: string; flash?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(
     params.error === 'pending' ? 'Your account is still pending admin approval.' : ''
+  );
+  const [successBanner, setSuccessBanner] = useState(
+    params.flash === 'password_reset'
+      ? 'Your password was updated. Sign in with your new password.'
+      : ''
   );
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -40,12 +45,14 @@ export default function LoginScreen() {
     setEmail(value);
     if (emailError) setEmailError('');
     if (error) setError('');
+    if (successBanner) setSuccessBanner('');
   };
 
   const handlePasswordChange = (value: string) => {
     setPassword(value);
     if (passwordError) setPasswordError('');
     if (error) setError('');
+    if (successBanner) setSuccessBanner('');
   };
 
   const handleLogin = async () => {
@@ -116,6 +123,12 @@ export default function LoginScreen() {
                 inspections.
               </Text>
 
+              {successBanner ? (
+                <View style={styles.successBox}>
+                  <Text style={styles.successBanner}>{successBanner}</Text>
+                </View>
+              ) : null}
+
               {error ? (
                 <View style={styles.errorBox}>
                   <Text style={styles.error}>{error}</Text>
@@ -165,11 +178,14 @@ export default function LoginScreen() {
               </View>
 
               <View style={styles.inlineRow}>
-                <Text style={styles.inlineText}>Official LGU account required</Text>
+                <TouchableOpacity onPress={() => router.push('/forgot-password')} activeOpacity={0.8}>
+                  <Text style={styles.inlineTextAction}>Forgot password?</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => router.push('/register')} activeOpacity={0.8}>
                   <Text style={styles.inlineTextAction}>Sign up</Text>
                 </TouchableOpacity>
               </View>
+              <Text style={styles.inlineFooter}>Official LGU account required</Text>
 
               <TouchableOpacity
                 style={[styles.button, (!canSubmit || isSubmitting) && styles.buttonDisabled]}
@@ -370,6 +386,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.sm,
   },
+  inlineFooter: {
+    color: InterfaceTheme.steel,
+    fontSize: FontSize.xs,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+  },
   inlineText: {
     color: InterfaceTheme.steel,
     fontSize: FontSize.xs,
@@ -459,6 +482,20 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: Spacing.sm,
     marginBottom: Spacing.sm,
+  },
+  successBox: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 14,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  successBanner: {
+    color: '#065F46',
+    fontSize: FontSize.sm,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   metaRow: {
     flexDirection: 'row',

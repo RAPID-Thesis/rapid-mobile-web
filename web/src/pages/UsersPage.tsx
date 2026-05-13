@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { User, VerificationStatus } from '../types';
 
@@ -110,6 +111,13 @@ export default function UsersPage() {
           <p className="text-sm text-slate-500 mt-1">
             Approve or reject pending sign-up requests and review existing users.
           </p>
+          <p className="text-xs text-slate-500 mt-2">
+            To permanently remove an <strong>approved</strong> user, use{' '}
+            <Link to="/admin/settings" className="text-blue-600 font-semibold hover:underline">
+              Admin settings
+            </Link>
+            .
+          </p>
         </div>
         <button
           onClick={() => {
@@ -201,7 +209,6 @@ export default function UsersPage() {
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">LGU Code</th>
                 <th className="px-4 py-3">Joined</th>
-                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -233,28 +240,6 @@ export default function UsersPage() {
                     <td className="px-4 py-3 text-sm text-slate-600">{user.lgu_code || '—'}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">
                       {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-2">
-                        {user.verification_status !== 'approved' && (
-                          <button
-                            disabled={busyId === user.id}
-                            onClick={() => void updateStatus(user.id, 'approved')}
-                            className="text-xs font-bold px-2.5 py-1 rounded-md border border-emerald-600 text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
-                          >
-                            Approve
-                          </button>
-                        )}
-                        {user.verification_status !== 'rejected' && (
-                          <button
-                            disabled={busyId === user.id}
-                            onClick={() => void updateStatus(user.id, 'rejected')}
-                            className="text-xs font-bold px-2.5 py-1 rounded-md border border-red-600 text-red-700 hover:bg-red-50 disabled:opacity-60"
-                          >
-                            Reject
-                          </button>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 );

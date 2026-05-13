@@ -495,6 +495,11 @@ async def process_assessment(assessment_id: UUID) -> None:
             logger.warning("process_assessment: assessment %s not found", assessment_id)
             return
 
+        logger.info(
+            "process_assessment: starting ML pipeline for %s (first run may load TensorFlow for ~30-120s; silence until then is normal)",
+            assessment_id,
+        )
+
         building = assessment.building
         supabase = get_supabase_admin()
 

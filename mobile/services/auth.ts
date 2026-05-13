@@ -1,5 +1,9 @@
 import { supabase } from './supabase';
 
+/** Must match an entry in Supabase → Authentication → URL configuration → Redirect URLs. */
+export const PASSWORD_RESET_REDIRECT_URL =
+  process.env.EXPO_PUBLIC_PASSWORD_RESET_REDIRECT_URL?.trim() || 'rapid://reset-password';
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -123,6 +127,17 @@ export async function signUpUser(input: {
 
 export async function logoutUser(): Promise<void> {
   await supabase.auth.signOut();
+}
+
+/** Uses {@link PASSWORD_RESET_REDIRECT_URL} — add that exact URL in Supabase Redirect URLs. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const normalized = email.trim();
+  const { error } = await supabase.auth.resetPasswordForEmail(normalized, {
+    redirectTo: PASSWORD_RESET_REDIRECT_URL,
+  });
+  if (error) {
+    throw new Error(error.message ?? 'Unable to send reset email.');
+  }
 }
 
 export async function getSession() {
