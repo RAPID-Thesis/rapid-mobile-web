@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import { supabase } from '../../services/supabase';
+import { formatPercent } from '../../utils/formatPercent';
 import { useAuth } from '../../context/AuthContext';
 
 /** Must match `tabBarStyle` in `(tabs)/_layout.tsx` (floating bar). */
@@ -86,7 +87,7 @@ function AssessmentCard({ item, buildings }: { item: AssessmentRow; buildings: B
           </Text>
         </View>
         {confidence != null && (
-          <Text style={styles.metaText}>{(confidence * 100).toFixed(0)}% conf.</Text>
+          <Text style={styles.metaText}>{formatPercent(confidence, 0)} conf.</Text>
         )}
         <View style={[styles.statusDot, { backgroundColor: statusInfo.color }]} />
         <Text style={[styles.metaText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
@@ -134,7 +135,7 @@ export default function AssessmentsScreen() {
 
   const preEqCount = assessments.filter((a) => a.phase === 'pre-earthquake').length;
   const postEqCount = assessments.filter((a) => a.phase === 'post-earthquake').length;
-  const urgentCount = assessments.filter((a) => a.priority_score >= 80).length;
+  const urgentCount = assessments.filter((a) => a.priority_score >= 0.8).length;
 
   const filteredAssessments = useMemo(() => {
     if (phaseFilter === 'all') return assessments;

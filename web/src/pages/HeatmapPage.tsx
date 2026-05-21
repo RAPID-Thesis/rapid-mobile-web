@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import { supabase } from '../lib/supabase';
+import { formatPercent } from '../lib/formatPercent';
 import type { Assessment, AssessmentPhase, Building } from '../types';
 import 'leaflet/dist/leaflet.css';
 
@@ -183,7 +184,7 @@ export default function HeatmapPage() {
                           <span className="font-bold" style={{ color: getMarkerColor(m.label) }}>
                             {m.label.toUpperCase()}
                           </span>{' '}
-                          ({(m.confidence * 100).toFixed(0)}%)
+                          ({formatPercent(m.confidence, 0)})
                         </p>
                         <p className="text-xs text-slate-500">
                           Priority: {m.priority} &bull; {m.phase === 'pre-earthquake' ? 'Pre-EQ' : 'Post-EQ'}

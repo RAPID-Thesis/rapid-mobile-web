@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import { supabase } from '../../services/supabase';
+import { formatPercent } from '../../utils/formatPercent';
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -104,12 +105,12 @@ export default function AssessmentDetailScreen() {
         <View>
           <Text style={styles.bannerLabel}>{classLabel.toUpperCase()}</Text>
           <Text style={styles.bannerConf}>
-            {confidence != null ? `${(confidence * 100).toFixed(0)}% confidence` : 'No AI result yet'}
+            {confidence != null ? `${formatPercent(confidence, 0)} confidence` : 'No AI result yet'}
           </Text>
         </View>
         {assessment.priority_score != null && (
           <View style={styles.priorityBadge}>
-            <Text style={styles.priorityText}>Priority: {assessment.priority_score}</Text>
+            <Text style={styles.priorityText}>Priority: {formatPercent(assessment.priority_score, 0)}</Text>
           </View>
         )}
       </LinearGradient>
@@ -129,6 +130,23 @@ export default function AssessmentDetailScreen() {
         <DataRow label="Status" value={assessment.status ?? '—'} />
         <DataRow label="Created" value={new Date(assessment.created_at).toLocaleDateString()} />
       </SectionCard>
+
+      {(assessment.ai_image_probabilities || assessment.ai_feature_importance) && (
+        <SectionCard title="AI Breakdown">
+          {assessment.ai_image_probabilities &&
+            Object.entries(assessment.ai_image_probabilities as Record<string, number>).map(([label, value]) => (
+              <DataRow key={`img-${label}`} label={label.toUpperCase()} value={formatPercent(value)} />
+            ))}
+          {assessment.ai_feature_importance &&
+            Object.entries(assessment.ai_feature_importance as Record<string, number>).map(([label, value]) => (
+              <DataRow
+                key={`tab-${label}`}
+                label={label.replace(/^cat__|^num__/, '').replace(/_/g, ' ')}
+                value={formatPercent(value)}
+              />
+            ))}
+        </SectionCard>
+      )}
 
       {assessment.action_plan_text && (
         <SectionCard title="Action Plan">

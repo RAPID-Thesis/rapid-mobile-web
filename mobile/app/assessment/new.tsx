@@ -16,13 +16,14 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
-import { ImageAngle, AssessmentPhase, BuildingUse } from '../../types';
+import { AssessmentPhase, BuildingUse } from '../../types';
 import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
 import { WizardTheme } from '../../constants/wizardTheme';
 import CameraCapture, { CapturedPhoto } from './CameraCapture';
 import Text from '../../components/CustomText';
 import { useAuth } from '../../context/AuthContext';
 import { predictOfflineHeuristic } from '../../services/localPredict';
+import { formatPercent } from '../../utils/formatPercent';
 import { enqueueOutbox, processOutbox } from '../../services/outbox';
 import { type WizardAssessmentSyncInput } from '../../services/sync';
 import {
@@ -33,13 +34,8 @@ import {
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
-
-const ANGLES: { key: ImageAngle; label: string; icon: string }[] = [
-  { key: 'front', label: 'Front Facade', icon: 'image' },
-  { key: 'left', label: 'Left Side', icon: 'arrow-back' },
-  { key: 'right', label: 'Right Side', icon: 'arrow-forward' },
-  { key: 'closeup', label: 'Damage Close-up', icon: 'search' },
-];
+const MAX_PHOTOS = 4;
+const MIN_PHOTOS = 2;
 
 function normalizeLocationTokens(raw: string): string[] {
   return raw
@@ -164,14 +160,14 @@ export default function NewAssessmentScreen() {
   const [address, setAddress] = useState('');
   const [barangay, setBarangay] = useState('');
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
-  const [capturedPhotos, setCapturedPhotos] = useState<Partial<Record<ImageAngle, CapturedPhoto>>>({});
-  const [captureTarget, setCaptureTarget] = useState<ImageAngle | null>(null);
+  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [retakePhotoId, setRetakePhotoId] = useState<string | null>(null);
   const [coords, setCoords] = useState<LocationFix | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'requesting' | 'ready' | 'denied' | 'failed'>('idle');
   const [gpsRefreshing, setGpsRefreshing] = useState(false);
   const [gpsCanAskAgain, setGpsCanAskAgain] = useState(true);
   const [gpsBypassed, setGpsBypassed] = useState(false);
-  const capturedAngles = Object.keys(capturedPhotos) as ImageAngle[];
   const [structuralData, setStructuralData] = useState<StructuralDataState>({
     stories: '',
     yearBuilt: '',
@@ -215,9 +211,9 @@ export default function NewAssessmentScreen() {
         poundingHazard: structuralData.poundingHazard,
         fallingHazard: structuralData.fallingHazard,
       },
-      imageCount: capturedAngles.length,
+      imageCount: capturedPhotos.length,
     });
-  }, [step, phase, buildingUse, structuralData, capturedAngles.length]);
+  }, [step, phase, buildingUse, structuralData, capturedPhotos.length]);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -255,19 +251,25 @@ export default function NewAssessmentScreen() {
     void refreshGpsFix();
   }, []);
 
-  const openCapture = (angle: ImageAngle) => setCaptureTarget(angle);
+  const openCapture = () => setCameraOpen(true);
 
   const handleCaptured = (photo: CapturedPhoto) => {
-    setCapturedPhotos((prev) => ({ ...prev, [photo.angle]: photo }));
-    setCaptureTarget(null);
+    if (retakePhotoId) {
+      setCapturedPhotos((prev) => prev.map((p) => (p.id === retakePhotoId ? photo : p)));
+      setRetakePhotoId(null);
+    } else {
+      setCapturedPhotos((prev) => [...prev, photo]);
+    }
+    setCameraOpen(false);
   };
 
-  const removeCapture = (angle: ImageAngle) => {
-    setCapturedPhotos((prev) => {
-      const next = { ...prev };
-      delete next[angle];
-      return next;
-    });
+  const removeCapture = (id: string) => {
+    setCapturedPhotos((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const retakeCapture = (id: string) => {
+    setRetakePhotoId(id);
+    setCameraOpen(true);
   };
 
   const handleSubmit = async () => {
@@ -297,14 +299,12 @@ export default function NewAssessmentScreen() {
         planIrregularity: structuralData.planIrregularity,
         poundingHazard: structuralData.poundingHazard,
         fallingHazard: structuralData.fallingHazard,
-        capturedAngles,
+        photoCount: capturedPhotos.length,
         gps_accuracy_m: coords?.accuracy_m ?? null,
         gps_captured_at: coords?.capturedAt ?? null,
       };
 
-      const imageUris = ANGLES.map((a) => capturedPhotos[a.key]?.uri).filter(
-        (u): u is string => Boolean(u)
-      );
+      const imageUris = capturedPhotos.map((p) => p.uri);
 
       const localPrediction = predictOfflineHeuristic({
         phase,
@@ -357,7 +357,7 @@ export default function NewAssessmentScreen() {
 
   const canProceed = () => {
     if (step === 0) return autoBuildingCode.length > 0 && address.length > 0 && (coords != null || gpsBypassed);
-    if (step === 1) return capturedAngles.length >= 2;
+    if (step === 1) return capturedPhotos.length >= MIN_PHOTOS;
     if (step === 2) {
       return Boolean(
         structuralData.primaryMaterial &&
@@ -385,7 +385,7 @@ export default function NewAssessmentScreen() {
         <View style={styles.infoBanner}>
           <Ionicons name="shield-checkmark" size={18} color={WizardTheme.colors.primary} />
           <Text style={styles.infoBannerText}>
-            FEMA P-154 and ATC-20 aligned workflow. Minimum 2 photo angles required.
+            FEMA P-154 and ATC-20 aligned workflow. Minimum {MIN_PHOTOS} photos required.
           </Text>
         </View>
 
@@ -542,16 +542,9 @@ export default function NewAssessmentScreen() {
             />
 
             <Text style={styles.fieldLabel}>Building Use</Text>
-            <View style={styles.chipRow}>
-              {(['residential', 'commercial', 'institutional', 'industrial', 'mixed'] as BuildingUse[]).map((u) => (
-                <TouchableOpacity
-                  key={u}
-                  style={[styles.chip, buildingUse === u && styles.chipActive]}
-                  onPress={() => setBuildingUse(u)}
-                >
-                  <Text style={[styles.chipText, buildingUse === u && styles.chipTextActive]}>{u}</Text>
-                </TouchableOpacity>
-              ))}
+            <Text style={styles.hint}>All field assessments in this deployment are recorded as residential.</Text>
+            <View style={[styles.input, styles.inputReadOnly, styles.buildingUseReadOnly]}>
+              <Text style={styles.buildingUseText}>Residential</Text>
             </View>
           </View>
         )}
@@ -560,62 +553,53 @@ export default function NewAssessmentScreen() {
           <View style={styles.stepCard}>
             <Text style={styles.sectionTitle}>Smart Framing Guide</Text>
             <Text style={styles.hint}>
-              Capture at least 2 of 4 angles. Each photo is checked for blur, tilt, and minimum
-              resolution before you continue.
+              Capture at least {MIN_PHOTOS} photos of visible damage or structural concerns.
+              Each photo is checked for blur and minimum resolution before you continue.
+              You can add up to {MAX_PHOTOS} photos.
             </Text>
 
-            <Text style={styles.fieldLabel}>Required Angles ({capturedAngles.length}/4 captured)</Text>
-            {ANGLES.map((a) => {
-              const photo = capturedPhotos[a.key];
-              const captured = Boolean(photo);
-              return (
-                <View
-                  key={a.key}
-                  style={[styles.angleRow, captured && styles.angleRowCaptured]}
-                >
-                  {captured && photo ? (
-                    <Image source={{ uri: photo.uri }} style={styles.angleThumb} />
-                  ) : (
-                    <View style={styles.angleThumbPlaceholder}>
-                      <Ionicons name={a.icon as any} size={22} color={WizardTheme.colors.textMuted} />
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.angleLabel, captured && styles.angleLabelCaptured]}>
-                      {a.label}
-                    </Text>
-                    {captured && photo ? (
-                      <Text style={styles.angleMeta}>
-                        {photo.width}×{photo.height} • tilt {photo.tiltDeg.toFixed(0)}°
-                      </Text>
-                    ) : null}
-                  </View>
-                  {captured ? (
-                    <View style={styles.angleActions}>
-                      <TouchableOpacity
-                        style={styles.angleActionBtn}
-                        onPress={() => openCapture(a.key)}
-                        accessibilityLabel={`Retake ${a.label}`}
-                      >
-                        <Ionicons name="refresh" size={18} color={WizardTheme.colors.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.angleActionBtn}
-                        onPress={() => removeCapture(a.key)}
-                        accessibilityLabel={`Remove ${a.label}`}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={WizardTheme.colors.unsafe} />
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity style={styles.captureBtn} onPress={() => openCapture(a.key)}>
-                      <Ionicons name="camera" size={16} color="#FFF" />
-                      <Text style={styles.captureBtnText}>Capture</Text>
-                    </TouchableOpacity>
-                  )}
+            <Text style={styles.fieldLabel}>
+              Photos ({capturedPhotos.length}/{MAX_PHOTOS} captured)
+            </Text>
+
+            {capturedPhotos.map((photo, index) => (
+              <View key={photo.id} style={[styles.angleRow, styles.angleRowCaptured]}>
+                <Image source={{ uri: photo.uri }} style={styles.angleThumb} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.angleLabel, styles.angleLabelCaptured]}>
+                    Photo {index + 1}
+                  </Text>
+                  <Text style={styles.angleMeta}>
+                    {photo.width}×{photo.height}
+                  </Text>
                 </View>
-              );
-            })}
+                <View style={styles.angleActions}>
+                  <TouchableOpacity
+                    style={styles.angleActionBtn}
+                    onPress={() => retakeCapture(photo.id)}
+                    accessibilityLabel={`Retake photo ${index + 1}`}
+                  >
+                    <Ionicons name="refresh" size={18} color={WizardTheme.colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.angleActionBtn}
+                    onPress={() => removeCapture(photo.id)}
+                    accessibilityLabel={`Remove photo ${index + 1}`}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={WizardTheme.colors.unsafe} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+
+            {capturedPhotos.length < MAX_PHOTOS ? (
+              <TouchableOpacity style={styles.addPhotoBtn} onPress={openCapture}>
+                <Ionicons name="camera" size={20} color={WizardTheme.colors.primary} />
+                <Text style={styles.addPhotoBtnText}>
+                  {capturedPhotos.length === 0 ? 'Capture first photo' : 'Add another photo'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
 
@@ -646,8 +630,13 @@ export default function NewAssessmentScreen() {
                 <Text style={styles.estimateEyebrow}>On-device estimate (offline-capable)</Text>
                 <Text style={styles.estimateLabel}>{offlineEstimate.fusedLabel}</Text>
                 <Text style={styles.estimateMeta}>
-                  {Math.round(offlineEstimate.fusedConfidence * 100)}% confidence
+                  {formatPercent(offlineEstimate.fusedConfidence, 0)} confidence
                 </Text>
+                {Object.entries(offlineEstimate.probabilities).map(([label, value]) => (
+                  <Text key={label} style={styles.estimateProb}>
+                    {label}: {formatPercent(value)}
+                  </Text>
+                ))}
               </View>
             ) : null}
 
@@ -666,16 +655,13 @@ export default function NewAssessmentScreen() {
             <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Photos</Text>
               <Text style={styles.reviewValue}>
-                {capturedAngles.length} captured{capturedAngles.length > 0 ? ` (${capturedAngles.join(', ')})` : ''}
+                {capturedPhotos.length} captured
               </Text>
-              {capturedAngles.length > 0 ? (
+              {capturedPhotos.length > 0 ? (
                 <View style={styles.reviewThumbs}>
-                  {capturedAngles.map((a) => {
-                    const p = capturedPhotos[a];
-                    return p ? (
-                      <Image key={a} source={{ uri: p.uri }} style={styles.reviewThumb} />
-                    ) : null;
-                  })}
+                  {capturedPhotos.map((p) => (
+                    <Image key={p.id} source={{ uri: p.uri }} style={styles.reviewThumb} />
+                  ))}
                 </View>
               ) : null}
             </View>
@@ -735,9 +721,11 @@ export default function NewAssessmentScreen() {
       </View>
 
       <CameraCapture
-        visible={captureTarget !== null}
-        angle={captureTarget ?? 'front'}
-        onCancel={() => setCaptureTarget(null)}
+        visible={cameraOpen}
+        onCancel={() => {
+          setCameraOpen(false);
+          setRetakePhotoId(null);
+        }}
         onCaptured={handleCaptured}
       />
     </View>
@@ -835,6 +823,15 @@ const styles = StyleSheet.create({
   inputReadOnly: {
     backgroundColor: WizardTheme.colors.background,
     color: WizardTheme.colors.text,
+  },
+  buildingUseReadOnly: {
+    justifyContent: 'center',
+  },
+  buildingUseText: {
+    fontSize: WizardTheme.typography.body,
+    color: WizardTheme.colors.text,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   infoBanner: {
     backgroundColor: WizardTheme.colors.infoBg,
@@ -936,6 +933,24 @@ const styles = StyleSheet.create({
     borderRadius: WizardTheme.radius.md,
   },
   captureBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  addPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: CONTROL_HEIGHT,
+    marginTop: WizardTheme.spacing.sm,
+    borderWidth: 2,
+    borderColor: WizardTheme.colors.primary,
+    borderStyle: 'dashed',
+    borderRadius: WizardTheme.radius.md,
+    backgroundColor: WizardTheme.colors.background,
+  },
+  addPhotoBtnText: {
+    color: WizardTheme.colors.primary,
+    fontSize: WizardTheme.typography.body,
+    fontWeight: '700',
+  },
   reviewThumbs: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10,
   },
@@ -988,6 +1003,13 @@ const styles = StyleSheet.create({
     color: WizardTheme.colors.textMuted,
     marginTop: 4,
     fontWeight: '600',
+  },
+  estimateProb: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+    marginTop: 2,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   offlineNotice: {
     flexDirection: 'row',

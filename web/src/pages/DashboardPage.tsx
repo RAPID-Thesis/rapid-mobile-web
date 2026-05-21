@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { formatPercent } from '../lib/formatPercent';
 import type { Assessment, Building } from '../types';
 
 function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
@@ -116,7 +117,7 @@ export default function DashboardPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-sm font-bold text-slate-700">{a.priority_score}</span>
+                      <span className="font-mono text-sm font-bold text-slate-700">{formatPercent(a.priority_score, 0)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs text-slate-600">{a.status.replace(/-/g, ' ')}</span>

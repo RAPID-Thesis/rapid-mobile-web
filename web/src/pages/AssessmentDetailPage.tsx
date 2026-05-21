@@ -5,15 +5,18 @@ import { signedUrlsForImages } from '../lib/signedImageUrls';
 import { openPrintableAssessmentReport } from '../lib/assessmentReport';
 import { useAuth } from '../context/AuthContext';
 import type { Assessment, Building } from '../types';
+import { formatPercent } from '../lib/formatPercent';
 
 function ConfidenceBar({ label, value, color }: { label: string; value: number; color: string }) {
+  const pct = value <= 1 && value >= 0 ? value * 100 : value;
+  const width = Math.min(100, Math.max(0, pct));
   return (
     <div className="flex items-center gap-3 mb-1">
-      <span className="w-24 text-xs font-semibold text-slate-600">{label}</span>
+      <span className="w-24 text-xs font-semibold text-slate-600 truncate" title={label}>{label}</span>
       <div className="flex-1 h-3 bg-slate-200 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${value * 100}%`, backgroundColor: color }} />
+        <div className="h-full rounded-full transition-all" style={{ width: `${width}%`, backgroundColor: color }} />
       </div>
-      <span className="w-10 text-right text-xs font-bold text-slate-700">{(value * 100).toFixed(0)}%</span>
+      <span className="w-14 text-right text-xs font-bold text-slate-700">{formatPercent(value)}</span>
     </div>
   );
 }
@@ -174,7 +177,7 @@ export default function AssessmentDetailPage() {
               <p className="text-sm opacity-80">
                 AI fused was {aiLabel.toUpperCase()}
                 {assessment.ai_fused_confidence != null
-                  ? ` (${(assessment.ai_fused_confidence * 100).toFixed(1)}% confidence)`
+                  ? ` (${formatPercent(assessment.ai_fused_confidence)} confidence)`
                   : ''}
               </p>
             ) : (
@@ -182,13 +185,13 @@ export default function AssessmentDetailPage() {
             )
           ) : (
             assessment.ai_fused_confidence != null && (
-              <p className="text-sm opacity-80">{(assessment.ai_fused_confidence * 100).toFixed(1)}% confidence</p>
+              <p className="text-sm opacity-80">{formatPercent(assessment.ai_fused_confidence)} confidence</p>
             )
           )}
         </div>
         <div className="text-right">
           <p className="text-sm opacity-80">Priority score</p>
-          <p className="text-4xl font-black">{assessment.priority_score}</p>
+          <p className="text-4xl font-black">{formatPercent(assessment.priority_score, 0)}</p>
         </div>
       </div>
 
@@ -279,7 +282,7 @@ export default function AssessmentDetailPage() {
                   <div>
                     <h4 className="text-sm font-semibold text-slate-600 mb-2">Image branch (ResNet50)</h4>
                     {Object.entries(assessment.ai_image_probabilities).map(([k, v]) => (
-                      <ConfidenceBar key={k} label={k.toUpperCase()} value={v} color={getClassColor(k).bar} />
+                      <ConfidenceBar key={k} label={k.toUpperCase()} value={Number(v)} color={getClassColor(k).bar} />
                     ))}
                   </div>
                 )}
@@ -287,7 +290,12 @@ export default function AssessmentDetailPage() {
                   <div>
                     <h4 className="text-sm font-semibold text-slate-600 mb-2">Tabular branch (feature importance)</h4>
                     {Object.entries(assessment.ai_feature_importance).map(([k, v]) => (
-                      <ConfidenceBar key={k} label={k} value={v} color="#3b82f6" />
+                      <ConfidenceBar
+                        key={k}
+                        label={k.replace(/^cat__|^num__/, '').replace(/_/g, ' ')}
+                        value={Number(v)}
+                        color="#3b82f6"
+                      />
                     ))}
                   </div>
                 )}

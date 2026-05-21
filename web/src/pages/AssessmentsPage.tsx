@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { formatPercent } from '../lib/formatPercent';
 import type { Assessment, AssessmentPhase, AssessmentStatus, Building } from '../types';
 
 export default function AssessmentsPage() {
@@ -168,15 +169,15 @@ export default function AssessmentsPage() {
                         <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
                           <div className="h-full bg-blue-500 rounded-full" style={{ width: `${confidence * 100}%` }} />
                         </div>
-                        <span className="text-xs font-mono text-slate-600">{(confidence * 100).toFixed(0)}%</span>
+                        <span className="text-xs font-mono text-slate-600">{formatPercent(confidence, 0)}</span>
                       </div>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`font-mono text-sm font-bold ${
-                      a.priority_score >= 80 ? 'text-red-600' : a.priority_score >= 50 ? 'text-amber-600' : 'text-green-600'
+                      a.priority_score >= 0.8 ? 'text-red-600' : a.priority_score >= 0.5 ? 'text-amber-600' : 'text-green-600'
                     }`}>
-                      {a.priority_score}
+                      {formatPercent(a.priority_score, 0)}
                     </span>
                   </td>
                   <td className="px-4 py-3">

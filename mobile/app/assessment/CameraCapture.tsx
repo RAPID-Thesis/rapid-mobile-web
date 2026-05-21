@@ -4,7 +4,6 @@ import {
   Alert,
   Image,
   Modal,
-  Platform,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -12,66 +11,40 @@ import {
 import { CameraView, useCameraPermissions, type CameraCapturedPicture } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Accelerometer } from 'expo-sensors';
 import { Ionicons } from '@expo/vector-icons';
-import { ImageAngle } from '../../types';
 import { WizardTheme } from '../../constants/wizardTheme';
 import Text from '../../components/CustomText';
 
 export interface CapturedPhoto {
-  angle: ImageAngle;
+  id: string;
   uri: string;
   width: number;
   height: number;
-  tiltDeg: number;
   blurScore: number;
   capturedAt: string;
 }
 
 interface CameraCaptureProps {
   visible: boolean;
-  angle: ImageAngle;
   onCancel: () => void;
   onCaptured: (photo: CapturedPhoto) => void;
 }
 
-const ANGLE_GUIDANCE: Record<ImageAngle, { title: string; hint: string; silhouette: 'wide' | 'narrow' | 'closeup' }> = {
-  front: {
-    title: 'Front Facade',
-    hint: 'Stand ~10 m back. Fit the whole front face inside the silhouette, level with the horizon.',
-    silhouette: 'wide',
-  },
-  left: {
-    title: 'Left Side',
-    hint: 'Move to the left corner. Capture at a 45° angle showing both the front and left walls.',
-    silhouette: 'narrow',
-  },
-  right: {
-    title: 'Right Side',
-    hint: 'Move to the right corner. Capture at a 45° angle showing both the front and right walls.',
-    silhouette: 'narrow',
-  },
-  closeup: {
-    title: 'Damage Close-up',
-    hint: 'Get within 1-2 m of the most severe crack or damage. Keep the defect centered.',
-    silhouette: 'closeup',
-  },
+const CAPTURE_GUIDANCE = {
+  title: 'Capture Damage',
+  hint: 'Frame the damage clearly. Keep the subject centered and use good lighting.',
 };
 
-// --- Quality thresholds (mirror the PRD Smart Framing Guide requirements) ---
+// --- Quality thresholds ---
 const MIN_DIMENSION = 800;
-const MAX_TILT_DEG = 15;
 const BLUR_WARN_THRESHOLD = 0.020;  // JPEG detail-density proxy; lower = blurrier
-const ACCEL_SAMPLE_MS = 200;
 
-export default function CameraCapture({ visible, angle, onCancel, onCaptured }: CameraCaptureProps) {
+export default function CameraCapture({ visible, onCancel, onCaptured }: CameraCaptureProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [tiltDeg, setTiltDeg] = useState(0);
-  const [preview, setPreview] = useState<CapturedPhoto | null>(null);
-  const guidance = ANGLE_GUIDANCE[angle];
+  const [preview, setPreview] = useState<Omit<CapturedPhoto, 'id'> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -81,37 +54,13 @@ export default function CameraCapture({ visible, angle, onCancel, onCaptured }: 
     }
   }, [visible, permission, requestPermission]);
 
-  useEffect(() => {
-    if (!visible) return;
-    // expo-sensors has no real Accelerometer native module on web — addListener throws.
-    if (Platform.OS === 'web') {
-      setTiltDeg(0);
-      return;
-    }
-    Accelerometer.setUpdateInterval(ACCEL_SAMPLE_MS);
-    const sub = Accelerometer.addListener(({ x, y, z }) => {
-      // Tilt from vertical. When the phone is held upright taking a photo of a
-      // building, gravity should be ~entirely along y (pointing down); x and z
-      // components indicate roll/pitch relative to that axis.
-      const gMag = Math.sqrt(x * x + y * y + z * z) || 1;
-      const roll = Math.abs(Math.atan2(x, Math.sqrt(y * y + z * z)) * (180 / Math.PI));
-      const pitch = Math.abs(Math.atan2(z, Math.sqrt(x * x + y * y)) * (180 / Math.PI)) - 90;
-      const tilt = Math.max(roll, Math.abs(pitch));
-      // Protect against garbage values on emulators where g≈0.
-      if (gMag > 0.3) setTiltDeg(tilt);
-    });
-    return () => sub.remove();
-  }, [visible]);
-
-  const tiltOk = tiltDeg <= MAX_TILT_DEG;
-
   const handleCapture = async () => {
     if (!cameraRef.current || busy) return;
     setBusy(true);
     try {
       const pic = await cameraRef.current.takePictureAsync({ quality: 0.92, exif: false });
       if (!pic?.uri) throw new Error('Capture returned no URI.');
-      const photo = await analyzeQuality(pic, angle, tiltDeg);
+      const photo = await analyzeQuality(pic);
       setPreview(photo);
     } catch (err: any) {
       Alert.alert('Capture failed', err?.message ?? 'Please try again.');
@@ -122,7 +71,7 @@ export default function CameraCapture({ visible, angle, onCancel, onCaptured }: 
 
   const handleAccept = () => {
     if (!preview) return;
-    onCaptured(preview);
+    onCaptured({ ...preview, id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}` });
     setPreview(null);
   };
 
@@ -157,7 +106,6 @@ export default function CameraCapture({ visible, angle, onCancel, onCaptured }: 
       {preview ? (
         <PreviewReview
           photo={preview}
-          angle={angle}
           onRetake={handleRetake}
           onAccept={handleAccept}
           onCancel={onCancel}
@@ -171,28 +119,15 @@ export default function CameraCapture({ visible, angle, onCancel, onCaptured }: 
             onCameraReady={() => setReady(true)}
           />
 
-          <SilhouetteOverlay variant={guidance.silhouette} />
+          <SilhouetteOverlay />
 
           <View style={styles.topBar}>
             <TouchableOpacity style={styles.iconBtn} onPress={onCancel} accessibilityLabel="Close camera">
               <Ionicons name="close" size={26} color="#FFF" />
             </TouchableOpacity>
             <View style={styles.topInfo}>
-              <Text style={styles.topTitle}>{guidance.title}</Text>
-              <Text style={styles.topHint}>{guidance.hint}</Text>
-            </View>
-          </View>
-
-          <View style={styles.telemetryRow}>
-            <View style={[styles.pill, tiltOk ? styles.pillOk : styles.pillWarn]}>
-              <Ionicons
-                name={tiltOk ? 'checkmark-circle' : 'warning'}
-                size={14}
-                color="#FFF"
-              />
-              <Text style={styles.pillText}>
-                Tilt {tiltDeg.toFixed(0)}° {tiltOk ? '(level)' : `(>${MAX_TILT_DEG}°)`}
-              </Text>
+              <Text style={styles.topTitle}>{CAPTURE_GUIDANCE.title}</Text>
+              <Text style={styles.topHint}>{CAPTURE_GUIDANCE.hint}</Text>
             </View>
           </View>
 
@@ -218,9 +153,7 @@ export default function CameraCapture({ visible, angle, onCancel, onCaptured }: 
 
 async function analyzeQuality(
   pic: CameraCapturedPicture,
-  angle: ImageAngle,
-  tiltDeg: number,
-): Promise<CapturedPhoto> {
+): Promise<Omit<CapturedPhoto, 'id'>> {
   const width = pic.width ?? 0;
   const height = pic.height ?? 0;
 
@@ -251,11 +184,9 @@ async function analyzeQuality(
   }
 
   return {
-    angle,
     uri: pic.uri,
     width,
     height,
-    tiltDeg,
     blurScore,
     capturedAt: new Date().toISOString(),
   };
@@ -265,13 +196,11 @@ async function analyzeQuality(
 
 function PreviewReview({
   photo,
-  angle,
   onRetake,
   onAccept,
   onCancel,
 }: {
-  photo: CapturedPhoto;
-  angle: ImageAngle;
+  photo: Omit<CapturedPhoto, 'id'>;
   onRetake: () => void;
   onAccept: () => void;
   onCancel: () => void;
@@ -285,7 +214,7 @@ function PreviewReview({
         <TouchableOpacity style={styles.iconBtn} onPress={onCancel} accessibilityLabel="Close">
           <Ionicons name="close" size={24} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.previewTitle}>Review — {ANGLE_GUIDANCE[angle].title}</Text>
+        <Text style={styles.previewTitle}>Review Photo</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -296,10 +225,6 @@ function PreviewReview({
         <QualityRow
           label={`Resolution ${photo.width}×${photo.height}`}
           ok={photo.width >= MIN_DIMENSION && photo.height >= MIN_DIMENSION}
-        />
-        <QualityRow
-          label={`Tilt at capture: ${photo.tiltDeg.toFixed(0)}° from vertical`}
-          ok={photo.tiltDeg <= MAX_TILT_DEG}
         />
         <QualityRow
           label={`Sharpness score: ${photo.blurScore.toFixed(3)}`}
@@ -345,18 +270,12 @@ function QualityRow({ label, ok }: { label: string; ok: boolean }) {
   );
 }
 
-function collectQualityIssues(photo: CapturedPhoto) {
+function collectQualityIssues(photo: Omit<CapturedPhoto, 'id'>) {
   const issues: { severity: 'block' | 'warn'; message: string }[] = [];
   if (photo.width < MIN_DIMENSION || photo.height < MIN_DIMENSION) {
     issues.push({
       severity: 'block',
       message: `Resolution below ${MIN_DIMENSION}×${MIN_DIMENSION}. Retake with higher camera quality.`,
-    });
-  }
-  if (photo.tiltDeg > MAX_TILT_DEG) {
-    issues.push({
-      severity: 'warn',
-      message: `Camera tilted ${photo.tiltDeg.toFixed(0)}°. Hold phone more level for accurate framing.`,
     });
   }
   if (photo.blurScore < BLUR_WARN_THRESHOLD) {
@@ -370,23 +289,11 @@ function collectQualityIssues(photo: CapturedPhoto) {
 
 // ---------- Silhouette overlay ----------
 
-function SilhouetteOverlay({ variant }: { variant: 'wide' | 'narrow' | 'closeup' }) {
-  if (variant === 'closeup') {
-    return (
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={styles.closeupMask}>
-          <View style={styles.closeupCenter} />
-        </View>
-        <GridLines />
-      </View>
-    );
-  }
-  const width = variant === 'wide' ? '78%' : '60%';
+function SilhouetteOverlay() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <View style={[styles.buildingSilhouette, { width }]}>
-        <View style={styles.buildingRoof} />
-        <View style={styles.buildingBody} />
+      <View style={styles.frameMask}>
+        <View style={styles.frameCenter} />
       </View>
       <GridLines />
     </View>
@@ -426,20 +333,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
 
-  telemetryRow: {
-    position: 'absolute',
-    top: 140, left: 0, right: 0,
-    alignItems: 'center',
-  },
-  pill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 999,
-  },
-  pillOk: { backgroundColor: 'rgba(22,163,74,0.9)' },
-  pillWarn: { backgroundColor: 'rgba(237,108,2,0.92)' },
-  pillText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-
   bottomBar: {
     position: 'absolute',
     bottom: 0, left: 0, right: 0,
@@ -460,32 +353,18 @@ const styles = StyleSheet.create({
   shutterDisabled: { backgroundColor: '#CBD5E1' },
   shutterInner: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#FFF' },
 
-  buildingSilhouette: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '18%', bottom: '22%',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.55)',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-  },
-  buildingRoof: {
-    position: 'absolute',
-    top: -14, left: '-4%', right: '-4%',
-    height: 16,
-    borderTopLeftRadius: 4, borderTopRightRadius: 4,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)',
-    borderStyle: 'dashed',
-  },
-  buildingBody: { flex: 1 },
-
-  closeupMask: {
+  frameMask: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center', alignItems: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  closeupCenter: {
-    width: 180, height: 180, borderRadius: 14,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)', borderStyle: 'dashed',
+  frameCenter: {
+    width: '82%',
+    height: '62%',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderStyle: 'dashed',
   },
 
   gridH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.18)' },

@@ -1,4 +1,5 @@
 import type { Assessment, Building } from '../types';
+import { formatPercent } from './formatPercent';
 
 /** Browser “Save as PDF” / print — FEMA P-154–style layout (MVP). */
 export function openPrintableAssessmentReport(
@@ -43,8 +44,8 @@ export function openPrintableAssessmentReport(
   <table>
     <tr><th>Phase</th><td>${assessment.phase === 'pre-earthquake' ? 'Pre-Earthquake (FEMA P-154)' : 'Post-Earthquake (ATC-20)'}</td></tr>
     <tr><th>Status</th><td>${escapeHtml(assessment.status)}</td></tr>
-    <tr><th>AI fused classification</th><td><strong>${escapeHtml(classLabel)}</strong>${assessment.ai_fused_confidence != null ? ` (${(assessment.ai_fused_confidence * 100).toFixed(1)}% confidence)` : ''}</td></tr>
-    <tr><th>Priority score</th><td>${assessment.priority_score}</td></tr>
+    <tr><th>AI fused classification</th><td><strong>${escapeHtml(classLabel)}</strong>${assessment.ai_fused_confidence != null ? ` (${formatPercent(assessment.ai_fused_confidence)} confidence)` : ''}</td></tr>
+    <tr><th>Priority score</th><td>${formatPercent(assessment.priority_score, 0)}</td></tr>
     ${assessment.override_classification ? `<tr><th>Engineer override</th><td>${escapeHtml(assessment.override_classification)} — ${escapeHtml(assessment.review_justification ?? '')}</td></tr>` : ''}
   </table>
 
