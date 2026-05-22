@@ -42,7 +42,7 @@ from .services.ml_fusion_engine import (
 )
 from .supabase_client import get_supabase_admin, get_supabase_public
 
-MAX_IMAGES = 4
+MAX_IMAGES = 8
 
 logger = logging.getLogger(__name__)
 

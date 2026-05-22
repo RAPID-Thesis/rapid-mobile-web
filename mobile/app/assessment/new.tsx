@@ -34,7 +34,7 @@ import {
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
-const MAX_PHOTOS = 4;
+const MAX_PHOTOS = 8;
 const MIN_PHOTOS = 2;
 
 function normalizeLocationTokens(raw: string): string[] {

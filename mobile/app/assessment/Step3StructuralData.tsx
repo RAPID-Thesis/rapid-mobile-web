@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   TextInput,
@@ -56,7 +57,22 @@ interface Step3StructuralDataProps {
   canProceed?: boolean;
 }
 
-type PickerFieldType = 'material' | 'system' | 'soil' | 'topography';
+type PickerFieldType = 'stories' | 'yearBuilt' | 'material' | 'system' | 'soil' | 'topography';
+
+const STORIES_OPTIONS = ['1', '2', '3'] as const;
+
+const CURRENT_YEAR = new Date().getFullYear();
+
+function buildYearBuiltOptions(): { label: string; value: string }[] {
+  const options: { label: string; value: string }[] = [{ label: 'Before 1970', value: '1965' }];
+  for (let year = 1970; year <= CURRENT_YEAR; year += 1) {
+    const value = String(year);
+    options.push({ label: value, value });
+  }
+  return options;
+}
+
+const YEAR_BUILT_OPTIONS = buildYearBuiltOptions();
 
 const PRIMARY_MATERIAL_OPTIONS: PrimaryMaterialOption[] = [
   'Concrete Hollow Block (CHB)',
@@ -82,6 +98,12 @@ const SOIL_CLASS_OPTIONS: SoilClassOption[] = [
 
 const TOPOGRAPHY_OPTIONS: TopographyOption[] = ['Flat', 'Gentle Slope', 'Steep Hill'];
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
+
+function yearBuiltLabel(value: string): string {
+  if (!value) return '';
+  const match = YEAR_BUILT_OPTIONS.find((o) => o.value === value);
+  return match?.label ?? value;
+}
 
 function SelectField({
   label,
@@ -118,6 +140,23 @@ export default function Step3StructuralData({
 
   const pickerConfig = useMemo(() => {
     switch (activePicker) {
+      case 'stories':
+        return {
+          title: 'Number of Stories',
+          options: [...STORIES_OPTIONS],
+          selected: value.stories,
+          onSelect: (selected: string) => onChange({ ...value, stories: selected }),
+        };
+      case 'yearBuilt':
+        return {
+          title: 'Year Built',
+          options: YEAR_BUILT_OPTIONS.map((o) => o.label),
+          selected: yearBuiltLabel(value.yearBuilt),
+          onSelect: (selected: string) => {
+            const match = YEAR_BUILT_OPTIONS.find((o) => o.label === selected);
+            onChange({ ...value, yearBuilt: match?.value ?? selected });
+          },
+        };
       case 'material':
         return {
           title: 'Primary Material',
@@ -173,24 +212,18 @@ export default function Step3StructuralData({
             Use standardized values only to improve downstream risk scoring and ML quality.
           </Text>
 
-          <Text style={styles.fieldLabel}>Number of Stories</Text>
-          <TextInput
-            style={styles.input}
+          <SelectField
+            label="Number of Stories"
+            placeholder="Select number of stories"
             value={value.stories}
-            onChangeText={(stories) => onChange({ ...value, stories })}
-            placeholder="e.g. 2"
-            keyboardType="numeric"
-            placeholderTextColor={Colors.textMuted}
+            onPress={() => setActivePicker('stories')}
           />
 
-          <Text style={styles.fieldLabel}>Year Built</Text>
-          <TextInput
-            style={styles.input}
-            value={value.yearBuilt}
-            onChangeText={(yearBuilt) => onChange({ ...value, yearBuilt })}
-            placeholder="e.g. 1990"
-            keyboardType="numeric"
-            placeholderTextColor={Colors.textMuted}
+          <SelectField
+            label="Year Built"
+            placeholder="Select year built"
+            value={yearBuiltLabel(value.yearBuilt)}
+            onPress={() => setActivePicker('yearBuilt')}
           />
 
           <SelectField
@@ -328,26 +361,41 @@ export default function Step3StructuralData({
 
       <Modal visible={Boolean(pickerConfig)} transparent animationType="fade" onRequestClose={() => setActivePicker(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setActivePicker(null)}>
-          <Pressable style={styles.modalCard}>
+          <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{pickerConfig?.title}</Text>
-            {pickerConfig?.options.map((option) => {
-              const isSelected = option === pickerConfig.selected;
-              return (
-                <TouchableOpacity
-                  key={option}
-                  style={[styles.optionRow, isSelected && styles.optionRowSelected]}
-                  onPress={() => {
-                    pickerConfig.onSelect(option);
-                    setActivePicker(null);
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option}</Text>
-                  {isSelected ? <Ionicons name="checkmark-circle" size={18} color={WizardTheme.colors.primary} /> : null}
-                </TouchableOpacity>
-              );
-            })}
-          </Pressable>
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {pickerConfig?.options.map((option, index) => {
+                const isSelected = option === pickerConfig.selected;
+                const isLast = index === pickerConfig.options.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[
+                      styles.optionRow,
+                      isSelected && styles.optionRowSelected,
+                      isLast && styles.optionRowLast,
+                    ]}
+                    onPress={() => {
+                      pickerConfig.onSelect(option);
+                      setActivePicker(null);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option}</Text>
+                    {isSelected ? (
+                      <Ionicons name="checkmark-circle" size={18} color={WizardTheme.colors.primary} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         </Pressable>
       </Modal>
     </View>
@@ -472,14 +520,24 @@ const styles = StyleSheet.create({
   modalCard: {
     backgroundColor: WizardTheme.colors.card,
     borderRadius: WizardTheme.radius.md,
-    padding: WizardTheme.spacing.md,
-    maxHeight: '80%',
+    paddingTop: WizardTheme.spacing.md,
+    paddingHorizontal: WizardTheme.spacing.md,
+    paddingBottom: WizardTheme.spacing.md,
+    maxHeight: '70%',
+    width: '100%',
+    overflow: 'hidden',
   },
   modalTitle: {
     fontSize: WizardTheme.typography.label,
     fontWeight: '800',
     color: WizardTheme.colors.text,
     marginBottom: WizardTheme.spacing.sm,
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: WizardTheme.spacing.sm,
   },
   optionRow: {
     minHeight: CONTROL_HEIGHT,
@@ -493,6 +551,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: WizardTheme.colors.card,
   },
+  optionRowLast: { marginBottom: 0 },
   optionRowSelected: { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
   optionText: {
     flex: 1,
