@@ -12,6 +12,8 @@ import {
   UIManager,
   ActivityIndicator,
   Linking,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,8 +33,14 @@ import {
   requestLocationPermission,
   type LocationFix,
 } from '../../services/location';
+import {
+  getBarangaysForDistrict,
+  SJDM_DISTRICT_OPTIONS,
+  type SjdmDistrict,
+} from '../../constants/sjdmLocations';
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
+type LocationPicker = 'district' | 'barangay';
 const CONTROL_HEIGHT = Math.max(MinTouchTarget, 48);
 const MAX_PHOTOS = 8;
 const MIN_PHOTOS = 2;
@@ -106,6 +114,37 @@ function buildingCodeFromLocation(address: string, barangay: string, lguCodeHint
   return `${lgu}-${br}-${spot}`;
 }
 
+function SelectField({
+  label,
+  placeholder,
+  value,
+  onPress,
+  disabled = false,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TouchableOpacity
+        style={[styles.selectField, disabled && styles.selectFieldDisabled]}
+        onPress={onPress}
+        activeOpacity={0.85}
+        disabled={disabled}
+      >
+        <Text style={[styles.selectText, !value && styles.selectPlaceholder]}>
+          {value || placeholder}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={WizardTheme.colors.textMuted} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function StepIndicator({ current }: { current: number }) {
   return (
     <View style={styles.stepRow}>
@@ -158,7 +197,9 @@ export default function NewAssessmentScreen() {
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<AssessmentPhase>('pre-earthquake');
   const [address, setAddress] = useState('');
+  const [district, setDistrict] = useState<SjdmDistrict | ''>('');
   const [barangay, setBarangay] = useState('');
+  const [activeLocationPicker, setActiveLocationPicker] = useState<LocationPicker | null>(null);
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -186,6 +227,31 @@ export default function NewAssessmentScreen() {
     () => buildingCodeFromLocation(address, barangay, profile?.lgu_code ?? ''),
     [address, barangay, profile?.lgu_code]
   );
+
+  const locationPickerConfig = useMemo(() => {
+    switch (activeLocationPicker) {
+      case 'district':
+        return {
+          title: 'District',
+          options: [...SJDM_DISTRICT_OPTIONS],
+          selected: district,
+          onSelect: (selected: string) => {
+            setDistrict(selected as SjdmDistrict);
+            setBarangay('');
+          },
+        };
+      case 'barangay':
+        if (!district) return null;
+        return {
+          title: 'Barangay',
+          options: [...getBarangaysForDistrict(district)],
+          selected: barangay,
+          onSelect: (selected: string) => setBarangay(selected),
+        };
+      default:
+        return null;
+    }
+  }, [activeLocationPicker, district, barangay]);
 
   const offlineEstimate = useMemo(() => {
     if (step !== 3) return null;
@@ -277,7 +343,7 @@ export default function NewAssessmentScreen() {
     try {
       const code = autoBuildingCode.trim();
       const municipality = (profile?.lgu_code ?? '').trim() || 'Unknown';
-      const barangayVal = barangay.trim() || 'TBD';
+      const barangayVal = barangay.trim();
       const storiesParsed = parseInt(structuralData.stories, 10);
       const yearParsed = structuralData.yearBuilt.trim()
         ? parseInt(structuralData.yearBuilt, 10)
@@ -356,7 +422,15 @@ export default function NewAssessmentScreen() {
   };
 
   const canProceed = () => {
-    if (step === 0) return autoBuildingCode.length > 0 && address.length > 0 && (coords != null || gpsBypassed);
+    if (step === 0) {
+      return (
+        autoBuildingCode.length > 0 &&
+        address.length > 0 &&
+        district.length > 0 &&
+        barangay.length > 0 &&
+        (coords != null || gpsBypassed)
+      );
+    }
     if (step === 1) return capturedPhotos.length >= MIN_PHOTOS;
     if (step === 2) {
       return Boolean(
@@ -425,7 +499,7 @@ export default function NewAssessmentScreen() {
             <Text style={styles.fieldLabel}>Building Code *</Text>
             <Text style={styles.hint}>
               Generated automatically from LGU, barangay, and address (short acronym style, e.g. TAN-SJ-12RZ).
-              Fill address (and barangay if you can) below — this field is read-only.
+              Select district and barangay below — this field is read-only.
             </Text>
             <TextInput
               style={[styles.input, styles.inputReadOnly]}
@@ -532,13 +606,18 @@ export default function NewAssessmentScreen() {
               ) : null}
             </View>
 
-            <Text style={styles.fieldLabel}>Barangay</Text>
-            <TextInput
-              style={styles.input}
+            <SelectField
+              label="District *"
+              placeholder="Select district"
+              value={district}
+              onPress={() => setActiveLocationPicker('district')}
+            />
+            <SelectField
+              label="Barangay *"
+              placeholder={district ? 'Select barangay' : 'Select a district first'}
               value={barangay}
-              onChangeText={setBarangay}
-              placeholder="Barangay (optional; uses BG in code if empty)"
-              placeholderTextColor={WizardTheme.colors.textMuted}
+              onPress={() => setActiveLocationPicker('barangay')}
+              disabled={!district}
             />
 
             <Text style={styles.fieldLabel}>Building Use</Text>
@@ -653,6 +732,14 @@ export default function NewAssessmentScreen() {
               </Text>
             </View>
             <View style={styles.reviewSection}>
+              <Text style={styles.reviewLabel}>District</Text>
+              <Text style={styles.reviewValue}>{district || 'Not specified'}</Text>
+            </View>
+            <View style={styles.reviewSection}>
+              <Text style={styles.reviewLabel}>Barangay</Text>
+              <Text style={styles.reviewValue}>{barangay || 'Not specified'}</Text>
+            </View>
+            <View style={styles.reviewSection}>
               <Text style={styles.reviewLabel}>Photos</Text>
               <Text style={styles.reviewValue}>
                 {capturedPhotos.length} captured
@@ -728,6 +815,53 @@ export default function NewAssessmentScreen() {
         }}
         onCaptured={handleCaptured}
       />
+
+      <Modal
+        visible={Boolean(locationPickerConfig)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveLocationPicker(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setActiveLocationPicker(null)}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{locationPickerConfig?.title}</Text>
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {locationPickerConfig?.options.map((option, index) => {
+                const isSelected = option === locationPickerConfig.selected;
+                const isLast = index === locationPickerConfig.options.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[
+                      styles.optionRow,
+                      isSelected && styles.optionRowSelected,
+                      isLast && styles.optionRowLast,
+                    ]}
+                    onPress={() => {
+                      locationPickerConfig.onSelect(option);
+                      setActiveLocationPicker(null);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                      {option}
+                    </Text>
+                    {isSelected ? (
+                      <Ionicons name="checkmark-circle" size={18} color={WizardTheme.colors.primary} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -867,6 +1001,77 @@ const styles = StyleSheet.create({
     color: WizardTheme.colors.text,
     backgroundColor: WizardTheme.colors.card,
   },
+  selectField: {
+    minHeight: CONTROL_HEIGHT,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.md,
+    paddingHorizontal: WizardTheme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: WizardTheme.colors.card,
+  },
+  selectFieldDisabled: {
+    backgroundColor: WizardTheme.colors.background,
+    opacity: 0.7,
+  },
+  selectText: {
+    fontSize: WizardTheme.typography.body,
+    color: WizardTheme.colors.text,
+    flex: 1,
+    paddingRight: WizardTheme.spacing.sm,
+  },
+  selectPlaceholder: { color: WizardTheme.colors.textMuted },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'center',
+    padding: WizardTheme.spacing.md,
+  },
+  modalCard: {
+    backgroundColor: WizardTheme.colors.card,
+    borderRadius: WizardTheme.radius.md,
+    paddingTop: WizardTheme.spacing.md,
+    paddingHorizontal: WizardTheme.spacing.md,
+    paddingBottom: WizardTheme.spacing.md,
+    maxHeight: '70%',
+    width: '100%',
+    overflow: 'hidden',
+  },
+  modalTitle: {
+    fontSize: WizardTheme.typography.label,
+    fontWeight: '800',
+    color: WizardTheme.colors.text,
+    marginBottom: WizardTheme.spacing.sm,
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: WizardTheme.spacing.sm,
+  },
+  optionRow: {
+    minHeight: CONTROL_HEIGHT,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.md,
+    paddingHorizontal: WizardTheme.spacing.md,
+    marginBottom: WizardTheme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: WizardTheme.colors.card,
+  },
+  optionRowLast: { marginBottom: 0 },
+  optionRowSelected: { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
+  optionText: {
+    flex: 1,
+    fontSize: WizardTheme.typography.body,
+    color: WizardTheme.colors.text,
+    paddingRight: WizardTheme.spacing.sm,
+  },
+  optionTextSelected: { color: WizardTheme.colors.primary, fontWeight: '700' },
   toggleRow: { flexDirection: 'row', gap: WizardTheme.spacing.md },
   toggleBtn: {
     flex: 1,
