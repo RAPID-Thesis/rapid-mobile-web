@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { APP_NAME } from '../../constants/branding';
 import { platformShadow } from '../../utils/platformShadow';
 import Text from '../../components/CustomText';
 import { supabase } from '../../services/supabase';
@@ -146,7 +147,7 @@ export default function ResetPasswordScreen() {
               <View style={styles.logoMark}>
                 <Ionicons name="key-outline" size={32} color={Colors.primary} />
               </View>
-              <Text style={styles.logoWordmark}>RAPID</Text>
+              <Text style={styles.logoWordmark}>{APP_NAME}</Text>
               <Text style={styles.cardTitle}>Set new password</Text>
               <Text style={styles.cardSubtitle}>
                 Choose a strong password you have not used elsewhere.

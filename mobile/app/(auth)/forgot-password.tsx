@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { APP_NAME } from '../../constants/branding';
 import { platformShadow } from '../../utils/platformShadow';
 import Text from '../../components/CustomText';
 import { requestPasswordReset } from '../../services/auth';
@@ -73,7 +74,7 @@ export default function ForgotPasswordScreen() {
               <View style={styles.logoMark}>
                 <Ionicons name="mail-outline" size={32} color={Colors.primary} />
               </View>
-              <Text style={styles.logoWordmark}>RAPID</Text>
+              <Text style={styles.logoWordmark}>{APP_NAME}</Text>
               <Text style={styles.cardTitle}>Forgot password</Text>
               <Text style={styles.cardSubtitle}>
                 If an account exists for that email, you will receive a link to set a new password. In

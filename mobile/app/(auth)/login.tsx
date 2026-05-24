@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { APP_NAME } from '../../constants/branding';
 import { platformShadow } from '../../utils/platformShadow';
 import Text from '../../components/CustomText';
 import { loginUser } from '../../services/auth';
@@ -114,7 +115,7 @@ export default function LoginScreen() {
               <View style={styles.logoMark}>
                 <Ionicons name="shield-checkmark" size={36} color={Colors.primary} />
               </View>
-              <Text style={styles.logoWordmark}>RAPID</Text>
+              <Text style={styles.logoWordmark}>{APP_NAME}</Text>
 
               <Text style={styles.cardTitle}>Welcome</Text>
 

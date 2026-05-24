@@ -1,0 +1,427 @@
+{
+  "exported_at_utc": "2026-05-23T07:25:02.466724+00:00",
+  "fusion": {
+    "image_weight": 0.45,
+    "tabular_weight": 0.55
+  },
+  "pre": {
+    "classes": [
+      "high",
+      "low",
+      "moderate"
+    ],
+    "resnet": {
+      "file": "resnet50_pre.tflite",
+      "input_name": "x",
+      "input_shape": [
+        224,
+        224,
+        3
+      ],
+      "input_dtype": "float32",
+      "preprocess": "resnet50_caffe_mean_subtract",
+      "preprocess_means": [
+        103.939,
+        116.779,
+        123.68
+      ],
+      "output_name": "Identity",
+      "classes": [
+        "high",
+        "low",
+        "moderate"
+      ],
+      "smoke_label": "low",
+      "size_bytes": 48067152
+    },
+    "rf": {
+      "file": "rf_pre.onnx",
+      "classifier_only": true,
+      "feature_columns": [
+        "year_built",
+        "building_age",
+        "number_of_stories",
+        "building_use",
+        "soil_classification",
+        "distance_to_fault_km",
+        "elevation_m",
+        "slope_deg",
+        "previous_retrofit_as_int",
+        "structural_system",
+        "foundation_type",
+        "material"
+      ],
+      "sample_row": {
+        "year_built": 1995.0,
+        "building_age": 31.0,
+        "number_of_stories": 3.0,
+        "building_use": "residential",
+        "soil_classification": "D",
+        "distance_to_fault_km": 8.5,
+        "elevation_m": 120.0,
+        "slope_deg": 3.0,
+        "previous_retrofit_as_int": 0.0,
+        "structural_system": "moment_frame",
+        "foundation_type": "shallow",
+        "material": "concrete"
+      },
+      "preprocessor": {
+        "numeric_features": [
+          "year_built",
+          "building_age",
+          "number_of_stories",
+          "distance_to_fault_km",
+          "elevation_m",
+          "slope_deg",
+          "previous_retrofit_as_int"
+        ],
+        "numeric_medians": [
+          1987.0,
+          39.0,
+          3.0,
+          7.347093398330202,
+          94.18472290039062,
+          5.1287117,
+          0.0
+        ],
+        "categorical_features": [
+          "building_use",
+          "soil_classification",
+          "structural_system",
+          "foundation_type",
+          "material"
+        ],
+        "one_hot": [
+          {
+            "column": "building_use",
+            "categories": [
+              "commercial",
+              "industrial",
+              "institutional",
+              "mixed",
+              "residential"
+            ]
+          },
+          {
+            "column": "soil_classification",
+            "categories": [
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          },
+          {
+            "column": "structural_system",
+            "categories": [
+              "braced_frame",
+              "moment_frame",
+              "shear_wall",
+              "unknown",
+              "wood_frame"
+            ]
+          },
+          {
+            "column": "foundation_type",
+            "categories": [
+              "deep",
+              "mat",
+              "shallow",
+              "unknown"
+            ]
+          },
+          {
+            "column": "material",
+            "categories": [
+              "concrete",
+              "mixed",
+              "wood"
+            ]
+          }
+        ],
+        "feature_names": [
+          "num__year_built",
+          "num__building_age",
+          "num__number_of_stories",
+          "num__distance_to_fault_km",
+          "num__elevation_m",
+          "num__slope_deg",
+          "num__previous_retrofit_as_int",
+          "cat__building_use_commercial",
+          "cat__building_use_industrial",
+          "cat__building_use_institutional",
+          "cat__building_use_mixed",
+          "cat__building_use_residential",
+          "cat__soil_classification_B",
+          "cat__soil_classification_C",
+          "cat__soil_classification_D",
+          "cat__soil_classification_E",
+          "cat__structural_system_braced_frame",
+          "cat__structural_system_moment_frame",
+          "cat__structural_system_shear_wall",
+          "cat__structural_system_unknown",
+          "cat__structural_system_wood_frame",
+          "cat__foundation_type_deep",
+          "cat__foundation_type_mat",
+          "cat__foundation_type_shallow",
+          "cat__foundation_type_unknown",
+          "cat__material_concrete",
+          "cat__material_mixed",
+          "cat__material_wood"
+        ],
+        "input_dim": 28
+      },
+      "classes": [
+        "high",
+        "low",
+        "moderate"
+      ],
+      "inputs": [
+        {
+          "name": "X",
+          "shape": [
+            null,
+            28
+          ],
+          "type": "tensor(float)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "label",
+          "shape": [
+            null
+          ],
+          "type": "tensor(string)"
+        },
+        {
+          "name": "probabilities",
+          "shape": [
+            null,
+            3
+          ],
+          "type": "tensor(float)"
+        }
+      ],
+      "smoke": {
+        "label": "moderate",
+        "confidence": 0.6359277963638306
+      },
+      "size_bytes": 16294681
+    }
+  },
+  "post": {
+    "classes": [
+      "RESTRICTED",
+      "SAFE",
+      "UNSAFE"
+    ],
+    "resnet": {
+      "file": "resnet50_post.tflite",
+      "input_name": "x",
+      "input_shape": [
+        224,
+        224,
+        3
+      ],
+      "input_dtype": "float32",
+      "preprocess": "resnet50_caffe_mean_subtract",
+      "preprocess_means": [
+        103.939,
+        116.779,
+        123.68
+      ],
+      "output_name": "Identity",
+      "classes": [
+        "RESTRICTED",
+        "SAFE",
+        "UNSAFE"
+      ],
+      "smoke_label": "SAFE",
+      "size_bytes": 48067160
+    },
+    "rf": {
+      "file": "rf_post.onnx",
+      "classifier_only": true,
+      "feature_columns": [
+        "year_built",
+        "building_age",
+        "number_of_stories",
+        "building_use",
+        "soil_classification",
+        "distance_to_fault_km",
+        "elevation_m",
+        "slope_deg",
+        "previous_retrofit_as_int",
+        "structural_system",
+        "foundation_type",
+        "material"
+      ],
+      "sample_row": {
+        "year_built": 1995.0,
+        "building_age": 31.0,
+        "number_of_stories": 3.0,
+        "building_use": "residential",
+        "soil_classification": "D",
+        "distance_to_fault_km": 8.5,
+        "elevation_m": 120.0,
+        "slope_deg": 3.0,
+        "previous_retrofit_as_int": 0.0,
+        "structural_system": "moment_frame",
+        "foundation_type": "shallow",
+        "material": "concrete"
+      },
+      "preprocessor": {
+        "numeric_features": [
+          "year_built",
+          "building_age",
+          "number_of_stories",
+          "distance_to_fault_km",
+          "elevation_m",
+          "slope_deg",
+          "previous_retrofit_as_int"
+        ],
+        "numeric_medians": [
+          1987.0,
+          39.0,
+          3.0,
+          7.337335386137683,
+          94.50863265991211,
+          5.1287117,
+          0.0
+        ],
+        "categorical_features": [
+          "building_use",
+          "soil_classification",
+          "structural_system",
+          "foundation_type",
+          "material"
+        ],
+        "one_hot": [
+          {
+            "column": "building_use",
+            "categories": [
+              "commercial",
+              "industrial",
+              "institutional",
+              "mixed",
+              "residential"
+            ]
+          },
+          {
+            "column": "soil_classification",
+            "categories": [
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          },
+          {
+            "column": "structural_system",
+            "categories": [
+              "braced_frame",
+              "moment_frame",
+              "shear_wall",
+              "unknown",
+              "wood_frame"
+            ]
+          },
+          {
+            "column": "foundation_type",
+            "categories": [
+              "deep",
+              "mat",
+              "shallow",
+              "unknown"
+            ]
+          },
+          {
+            "column": "material",
+            "categories": [
+              "concrete",
+              "mixed",
+              "wood"
+            ]
+          }
+        ],
+        "feature_names": [
+          "num__year_built",
+          "num__building_age",
+          "num__number_of_stories",
+          "num__distance_to_fault_km",
+          "num__elevation_m",
+          "num__slope_deg",
+          "num__previous_retrofit_as_int",
+          "cat__building_use_commercial",
+          "cat__building_use_industrial",
+          "cat__building_use_institutional",
+          "cat__building_use_mixed",
+          "cat__building_use_residential",
+          "cat__soil_classification_B",
+          "cat__soil_classification_C",
+          "cat__soil_classification_D",
+          "cat__soil_classification_E",
+          "cat__structural_system_braced_frame",
+          "cat__structural_system_moment_frame",
+          "cat__structural_system_shear_wall",
+          "cat__structural_system_unknown",
+          "cat__structural_system_wood_frame",
+          "cat__foundation_type_deep",
+          "cat__foundation_type_mat",
+          "cat__foundation_type_shallow",
+          "cat__foundation_type_unknown",
+          "cat__material_concrete",
+          "cat__material_mixed",
+          "cat__material_wood"
+        ],
+        "input_dim": 28
+      },
+      "classes": [
+        "RESTRICTED",
+        "SAFE",
+        "UNSAFE"
+      ],
+      "inputs": [
+        {
+          "name": "X",
+          "shape": [
+            null,
+            28
+          ],
+          "type": "tensor(float)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "label",
+          "shape": [
+            null
+          ],
+          "type": "tensor(string)"
+        },
+        {
+          "name": "probabilities",
+          "shape": [
+            null,
+            3
+          ],
+          "type": "tensor(float)"
+        }
+      ],
+      "smoke": {
+        "label": "RESTRICTED",
+        "confidence": 0.6365995407104492
+      },
+      "size_bytes": 16365191
+    }
+  },
+  "image_preprocess": {
+    "size": 224,
+    "crop": "center_square",
+    "input_dtype": "float32",
+    "preprocess": "Subtract ImageNet means [103.939, 116.779, 123.68] after scaling RGB 0-255 (ResNet50 caffe).",
+    "note": "Match tf.keras.applications.resnet50.preprocess_input on float32 RGB."
+  },
+  "bundled": true
+}

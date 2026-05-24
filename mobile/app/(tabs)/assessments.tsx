@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../constants/theme';
 import { platformShadow } from '../../utils/platformShadow';
 import { supabase } from '../../services/supabase';
+import { listOutbox } from '../../services/outbox';
+import { outboxToListRow, type LocalAssessmentListRow } from '../../services/localAssessments';
 import { formatPercent } from '../../utils/formatPercent';
 import { useAuth } from '../../context/AuthContext';
 
@@ -18,8 +20,9 @@ const FAB_SIZE = 56;
 const FAB_GAP_ABOVE_TAB = 12;
 const LIST_GAP_BELOW_FAB = Spacing.md;
 
-interface AssessmentRow {
+interface ServerAssessmentRow {
   id: string;
+  isLocal?: false;
   building_id: string;
   phase: string;
   status: string;
@@ -27,12 +30,19 @@ interface AssessmentRow {
   ai_fused_confidence: number | null;
   priority_score: number;
   created_at: string;
+  prediction_source?: never;
 }
+
+type AssessmentListRow = ServerAssessmentRow | LocalAssessmentListRow;
 
 interface BuildingRow {
   id: string;
   building_code: string;
   address: string;
+}
+
+function isLocalRow(item: AssessmentListRow): item is LocalAssessmentListRow {
+  return item.isLocal === true;
 }
 
 function getClassificationColor(label: string): string {
@@ -45,21 +55,52 @@ function getClassificationColor(label: string): string {
 
 type PhaseFilter = 'all' | 'pre-earthquake' | 'post-earthquake';
 
-function getStatusInfo(status: string): { label: string; color: string } {
+function getStatusInfo(
+  status: string,
+  predictionSource?: 'device-ml-fusion' | 'device-offline-heuristic'
+): { label: string; color: string } {
+  if (predictionSource === 'device-ml-fusion') {
+    return { label: 'Device ML', color: Colors.primary };
+  }
+  if (predictionSource === 'device-offline-heuristic') {
+    return { label: 'Heuristic', color: Colors.textMuted };
+  }
   switch (status) {
-    case 'pending-sync': return { label: 'Pending Sync', color: Colors.statusPendingSync };
-    case 'pending-review': return { label: 'Pending Review', color: Colors.statusPendingReview };
-    case 'reviewed': return { label: 'Reviewed', color: Colors.statusReviewed };
-    case 'report-generated': return { label: 'Report Generated', color: Colors.statusReportGenerated };
-    default: return { label: status, color: Colors.textMuted };
+    case 'pending-sync':
+      return { label: 'On Device', color: Colors.statusPendingSync };
+    case 'syncing':
+      return { label: 'Uploading', color: Colors.statusPendingReview };
+    case 'upload-failed':
+      return { label: 'Upload Failed', color: Colors.error };
+    case 'pending-review':
+      return { label: 'Pending Review', color: Colors.statusPendingReview };
+    case 'reviewed':
+      return { label: 'Reviewed', color: Colors.statusReviewed };
+    case 'report-generated':
+      return { label: 'Report Generated', color: Colors.statusReportGenerated };
+    default:
+      return { label: status, color: Colors.textMuted };
   }
 }
 
-function AssessmentCard({ item, buildings }: { item: AssessmentRow; buildings: BuildingRow[] }) {
-  const building = buildings.find((b) => b.id === item.building_id);
+function AssessmentCard({
+  item,
+  buildings,
+}: {
+  item: AssessmentListRow;
+  buildings: BuildingRow[];
+}) {
+  const building = isLocalRow(item)
+    ? null
+    : buildings.find((b) => b.id === item.building_id);
   const classification = item.ai_fused_label ?? 'Pending';
   const confidence = item.ai_fused_confidence;
-  const statusInfo = getStatusInfo(item.status);
+  const statusInfo = getStatusInfo(
+    item.status,
+    isLocalRow(item) ? item.prediction_source : undefined
+  );
+  const code = isLocalRow(item) ? item.building_code : (building?.building_code ?? '—');
+  const address = isLocalRow(item) ? item.address : (building?.address ?? '—');
 
   return (
     <TouchableOpacity
@@ -69,9 +110,9 @@ function AssessmentCard({ item, buildings }: { item: AssessmentRow; buildings: B
     >
       <View style={styles.cardTop}>
         <View>
-          <Text style={styles.cardCode}>{building?.building_code ?? '—'}</Text>
+          <Text style={styles.cardCode}>{code}</Text>
           <Text style={styles.cardAddress} numberOfLines={1}>
-            {building?.address ?? '—'}
+            {address}
           </Text>
         </View>
         <View style={[styles.classBadge, { backgroundColor: getClassificationColor(classification) }]}>
@@ -99,7 +140,7 @@ function AssessmentCard({ item, buildings }: { item: AssessmentRow; buildings: B
 export default function AssessmentsScreen() {
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
-  const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
+  const [assessments, setAssessments] = useState<AssessmentListRow[]>([]);
   const [buildings, setBuildings] = useState<BuildingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>('all');
@@ -110,20 +151,32 @@ export default function AssessmentsScreen() {
   const listPaddingBottom = insets.bottom + tabBarStack;
 
   const load = useCallback(async () => {
-    if (!session) {
-      setAssessments([]);
-      setBuildings([]);
-      setLoading(false);
-      return;
+    setLoading(true);
+
+    const localRows = (await listOutbox()).map(outboxToListRow);
+    let serverRows: ServerAssessmentRow[] = [];
+    let buildingRows: BuildingRow[] = [];
+
+    if (session) {
+      const [aRes, bRes] = await Promise.all([
+        supabase
+          .from('assessments')
+          .select(
+            'id, building_id, phase, status, ai_fused_label, ai_fused_confidence, priority_score, created_at'
+          )
+          .order('created_at', { ascending: false }),
+        supabase.from('buildings').select('id, building_code, address'),
+      ]);
+      serverRows = ((aRes.data as ServerAssessmentRow[]) ?? []).map((r) => ({ ...r, isLocal: false }));
+      buildingRows = (bRes.data as BuildingRow[]) ?? [];
     }
 
-    setLoading(true);
-    const [aRes, bRes] = await Promise.all([
-      supabase.from('assessments').select('id, building_id, phase, status, ai_fused_label, ai_fused_confidence, priority_score, created_at').order('created_at', { ascending: false }),
-      supabase.from('buildings').select('id, building_code, address'),
-    ]);
-    setAssessments((aRes.data as AssessmentRow[]) ?? []);
-    setBuildings((bRes.data as BuildingRow[]) ?? []);
+    const merged = [...localRows, ...serverRows].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    setAssessments(merged);
+    setBuildings(buildingRows);
     setLoading(false);
   }, [session]);
 
@@ -243,13 +296,11 @@ export default function AssessmentsScreen() {
             ) : assessments.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="clipboard-outline" size={36} color={Colors.textMuted} />
-                <Text style={styles.emptyTitle}>
-                  {session ? 'No assessments yet' : 'Offline field mode'}
-                </Text>
+                <Text style={styles.emptyTitle}>No assessments yet</Text>
                 <Text style={styles.emptyBody}>
                   {session
-                    ? 'Start your first field record to build your assessment queue.'
-                    : 'You can capture assessments without an account. Local records wait in the Sync tab until you sign in.'}
+                    ? 'Start your first field record. Risk classification and action plans work without signal.'
+                    : 'Capture assessments with full on-device triage — no account or signal required. Sign in later to upload to HQ.'}
                 </Text>
                 {!session ? (
                   <TouchableOpacity

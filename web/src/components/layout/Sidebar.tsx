@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { APP_NAME } from '../../lib/branding';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
@@ -34,7 +35,7 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
         {!collapsed && (
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-black text-sm">R</div>
-            <span className="font-bold text-lg tracking-wide">RAPID</span>
+            <span className="font-bold text-lg tracking-wide">{APP_NAME}</span>
           </div>
         )}
         <button onClick={onToggle} className="ml-auto p-2 hover:bg-slate-800 rounded-lg">

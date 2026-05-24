@@ -13,18 +13,29 @@ export function useNetworkOffline(): { ready: boolean; offline: boolean } {
       setOffline(state.isConnected === false || state.isInternetReachable === false);
     };
 
+    const readyTimer = setTimeout(() => {
+      if (mounted) setReady(true);
+    }, 3000);
+
     NetInfo.fetch()
       .then((state) => {
         apply(state);
-        if (mounted) setReady(true);
+        if (mounted) {
+          clearTimeout(readyTimer);
+          setReady(true);
+        }
       })
       .catch(() => {
-        if (mounted) setReady(true);
+        if (mounted) {
+          clearTimeout(readyTimer);
+          setReady(true);
+        }
       });
 
     const unsubscribe = NetInfo.addEventListener(apply);
     return () => {
       mounted = false;
+      clearTimeout(readyTimer);
       unsubscribe();
     };
   }, []);

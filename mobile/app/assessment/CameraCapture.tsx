@@ -13,6 +13,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { WizardTheme } from '../../constants/wizardTheme';
+import { APP_NAME } from '../../constants/branding';
 import Text from '../../components/CustomText';
 
 export interface CapturedPhoto {
@@ -88,7 +89,7 @@ export default function CameraCapture({ visible, onCancel, onCaptured }: CameraC
           <Ionicons name="camera-outline" size={64} color={WizardTheme.colors.primary} />
           <Text style={styles.permissionTitle}>Camera permission required</Text>
           <Text style={styles.permissionBody}>
-            RAPID needs the camera to capture building photos for AI damage classification.
+            {APP_NAME} needs the camera to capture building photos for AI damage classification.
           </Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={requestPermission}>
             <Text style={styles.primaryBtnText}>Grant access</Text>

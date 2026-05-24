@@ -73,9 +73,33 @@ Visit `http://localhost:8080/docs` and run a quick authenticated check.
 
 Other valid options: **Fly.io**, **Railway**, **Render**, **Azure Container Apps**, **AWS ECS/Fargate**, a **VPS + Docker + Caddy/nginx** — same env vars and HTTPS reverse proxy pattern.
 
+### 2.5 Deploy API on Railway (free trial)
+
+1. Install CLI: `npm i -g @railway/cli` then `railway login`.
+2. Ensure `backend/.env` is filled in (same vars as §2.1).
+3. Place server ML files in `ml/artifacts/` (`rf_*.joblib`, `resnet50_*.keras`) **or** set `ML_ARTIFACTS_URL` on Railway to a zip download URL.
+4. From repo root: `.\scripts\railway-deploy.ps1` (add `-CorsOrigin https://your-app.vercel.app` when web is deployed).
+5. Generate a public URL: `railway domain`.
+6. Point mobile `EXPO_PUBLIC_API_URL` and web `VITE_API_URL` at that URL; rebuild mobile (env is baked at build time).
+
+Config lives in `railway.toml` (Dockerfile path `backend/Dockerfile`, health check `/api/health`).
+
 ---
 
 ## 3. Web dashboard (Vite)
+
+### 3.1 Deploy on Vercel (recommended)
+
+1. Install CLI: `npm i -g vercel` then `vercel login`.
+2. Set `web/.env` (see `web/.env.example`):
+   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+   - `VITE_API_URL=https://rapid-api-production-14e0.up.railway.app` (your Railway URL)
+3. From repo root: `.\scripts\vercel-deploy.ps1 -Production`
+4. In Supabase **Auth → URL configuration**, add your Vercel **site URL** and redirect URLs.
+
+`web/vercel.json` enables React Router SPA rewrites.
+
+### 3.2 Manual / other hosts
 
 1. Set production `.env` (or CI secrets):
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`

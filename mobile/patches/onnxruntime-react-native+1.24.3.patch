@@ -1,0 +1,23 @@
+diff --git a/node_modules/onnxruntime-react-native/android/build.gradle b/node_modules/onnxruntime-react-native/android/build.gradle
+index 41b4359..6a049c3 100644
+--- a/node_modules/onnxruntime-react-native/android/build.gradle
++++ b/node_modules/onnxruntime-react-native/android/build.gradle
+@@ -247,9 +247,15 @@ dependencies {
+     extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+   }
+ 
+-  if (VersionNumber.parse(REACT_NATIVE_VERSION) < VersionNumber.parse("0.71")) {
+-    extractLibs "com.facebook.fbjni:fbjni:+:headers"
+-    extractLibs "com.facebook.fbjni:fbjni:+"
++  // VersionNumber removed in Gradle 9; RN 0.71+ (Expo 55 uses 0.83+) skips fbjni extract.
++  def versionParts = REACT_NATIVE_VERSION.split("\\.")
++  if (versionParts.length >= 2) {
++    def rnMajor = versionParts[0].toInteger()
++    def rnMinor = versionParts[1].toInteger()
++    if (rnMajor == 0 && rnMinor < 71) {
++      extractLibs "com.facebook.fbjni:fbjni:+:headers"
++      extractLibs "com.facebook.fbjni:fbjni:+"
++    }
+   }
+ 
+   // By default it will just include onnxruntime full aar package

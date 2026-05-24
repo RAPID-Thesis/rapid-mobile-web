@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { APP_NAME } from '../../constants/branding';
 import { platformShadow } from '../../utils/platformShadow';
 import Text from '../../components/CustomText';
 import { signUpUser } from '../../services/auth';
@@ -92,7 +93,7 @@ export default function RegisterScreen() {
               <View style={styles.logoMark}>
                 <Ionicons name="shield-checkmark" size={36} color={Colors.primary} />
               </View>
-              <Text style={styles.logoWordmark}>RAPID</Text>
+              <Text style={styles.logoWordmark}>{APP_NAME}</Text>
 
               <Text style={styles.cardTitle}>Create Account</Text>
               <Text style={styles.cardSubtitle}>

@@ -18,13 +18,20 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { APP_NAME } from '../../constants/branding';
 import { AssessmentPhase, BuildingUse } from '../../types';
 import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
 import { WizardTheme } from '../../constants/wizardTheme';
 import CameraCapture, { CapturedPhoto } from './CameraCapture';
 import Text from '../../components/CustomText';
 import { useAuth } from '../../context/AuthContext';
-import { predictOfflineHeuristic } from '../../services/localPredict';
+import type { LocalPredictionResult } from '../../services/localPredict';
+import {
+  computeLocalPriorityScore,
+  generateLocalActionPlan,
+  type LocalActionPlanResult,
+} from '../../services/localActionPlan';
+import { predictOnDevice } from '../../services/onDeviceMl';
 import { formatPercent } from '../../utils/formatPercent';
 import { enqueueOutbox, processOutbox } from '../../services/outbox';
 import { type WizardAssessmentSyncInput } from '../../services/sync';
@@ -209,6 +216,12 @@ export default function NewAssessmentScreen() {
   const [gpsRefreshing, setGpsRefreshing] = useState(false);
   const [gpsCanAskAgain, setGpsCanAskAgain] = useState(true);
   const [gpsBypassed, setGpsBypassed] = useState(false);
+  const [fieldResult, setFieldResult] = useState<{
+    prediction: LocalPredictionResult;
+    actionPlan: LocalActionPlanResult;
+    priorityScore: number;
+  } | null>(null);
+  const [predictingMl, setPredictingMl] = useState(false);
   const [structuralData, setStructuralData] = useState<StructuralDataState>({
     stories: '',
     yearBuilt: '',
@@ -253,33 +266,82 @@ export default function NewAssessmentScreen() {
     }
   }, [activeLocationPicker, district, barangay]);
 
-  const offlineEstimate = useMemo(() => {
-    if (step !== 3) return null;
+  const offlineStructuralForm = useMemo(
+    () => ({
+      primaryMaterial: structuralData.primaryMaterial,
+      structuralSystem: structuralData.structuralSystem,
+      soilClass: structuralData.soilClass,
+      topography: structuralData.topography,
+      condition: structuralData.condition,
+      verticalIrregularity: structuralData.verticalIrregularity,
+      planIrregularity: structuralData.planIrregularity,
+      poundingHazard: structuralData.poundingHazard,
+      fallingHazard: structuralData.fallingHazard,
+    }),
+    [structuralData]
+  );
+
+  const parsedStoriesYear = useMemo(() => {
     const storiesParsed = parseInt(structuralData.stories, 10);
     const yearParsed = structuralData.yearBuilt.trim()
       ? parseInt(structuralData.yearBuilt, 10)
       : NaN;
-    const stories = Number.isFinite(storiesParsed) && storiesParsed > 0 ? storiesParsed : 1;
-    const yearBuilt = Number.isFinite(yearParsed) ? yearParsed : null;
-    return predictOfflineHeuristic({
-      phase,
-      buildingUse,
-      yearBuilt,
-      numberOfStories: stories,
-      structuralData: {
-        primaryMaterial: structuralData.primaryMaterial,
-        structuralSystem: structuralData.structuralSystem,
-        soilClass: structuralData.soilClass,
-        topography: structuralData.topography,
-        condition: structuralData.condition,
-        verticalIrregularity: structuralData.verticalIrregularity,
-        planIrregularity: structuralData.planIrregularity,
-        poundingHazard: structuralData.poundingHazard,
-        fallingHazard: structuralData.fallingHazard,
-      },
-      imageCount: capturedPhotos.length,
-    });
-  }, [step, phase, buildingUse, structuralData, capturedPhotos.length]);
+    return {
+      stories: Number.isFinite(storiesParsed) && storiesParsed > 0 ? storiesParsed : 1,
+      yearBuilt: Number.isFinite(yearParsed) ? yearParsed : null,
+    };
+  }, [structuralData.stories, structuralData.yearBuilt]);
+
+  useEffect(() => {
+    if (step !== 3) {
+      setFieldResult(null);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      setPredictingMl(true);
+      try {
+        const prediction = await predictOnDevice({
+          phase,
+          buildingUse,
+          yearBuilt: parsedStoriesYear.yearBuilt,
+          numberOfStories: parsedStoriesYear.stories,
+          structuralData: offlineStructuralForm,
+          photoUris: capturedPhotos.map((p) => p.uri),
+          latitude: coords?.latitude ?? null,
+          longitude: coords?.longitude ?? null,
+        });
+        const actionPlan = generateLocalActionPlan({
+          phase: prediction.phase,
+          label: prediction.fusedLabel,
+          confidence: prediction.fusedConfidence,
+        });
+        const priorityScore = computeLocalPriorityScore(
+          prediction.fusedLabel,
+          prediction.fusedConfidence
+        );
+        if (!cancelled) {
+          setFieldResult({ prediction, actionPlan, priorityScore });
+        }
+      } finally {
+        if (!cancelled) setPredictingMl(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    step,
+    phase,
+    buildingUse,
+    offlineStructuralForm,
+    parsedStoriesYear,
+    capturedPhotos,
+    coords?.latitude,
+    coords?.longitude,
+  ]);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -372,7 +434,7 @@ export default function NewAssessmentScreen() {
 
       const imageUris = capturedPhotos.map((p) => p.uri);
 
-      const localPrediction = predictOfflineHeuristic({
+      const localPrediction = await predictOnDevice({
         phase,
         buildingUse,
         yearBuilt,
@@ -388,8 +450,20 @@ export default function NewAssessmentScreen() {
           poundingHazard: structuralData.poundingHazard,
           fallingHazard: structuralData.fallingHazard,
         },
-        imageCount: imageUris.length,
+        photoUris: imageUris,
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
       });
+
+      const localActionPlan = generateLocalActionPlan({
+        phase: localPrediction.phase,
+        label: localPrediction.fusedLabel,
+        confidence: localPrediction.fusedConfidence,
+      });
+      const localPriorityScore = computeLocalPriorityScore(
+        localPrediction.fusedLabel,
+        localPrediction.fusedConfidence
+      );
 
       const input: WizardAssessmentSyncInput = {
         building_code: code,
@@ -406,12 +480,15 @@ export default function NewAssessmentScreen() {
         imageUris,
       };
 
-      await enqueueOutbox({ input, localPrediction });
+      const saved = await enqueueOutbox({ input, localPrediction, localActionPlan, localPriorityScore });
       void processOutbox();
       Alert.alert(
-        'Saved on this device',
-        `Risk estimate: ${localPrediction.fusedLabel} (${Math.round(localPrediction.fusedConfidence * 100)}% confidence). This record is queued and will upload to the web app when sync is available.`,
-        [{ text: 'OK', onPress: () => router.back() }]
+        'Field assessment saved',
+        `Risk: ${localPrediction.fusedLabel} (${Math.round(localPrediction.fusedConfidence * 100)}% confidence, ${localPrediction.source === 'device-ml-fusion' ? 'on-device ML' : 'heuristic fallback'}). Action plan ready — no signal required.`,
+        [
+          { text: 'View result', onPress: () => router.replace(`/assessment/${saved.id}`) },
+          { text: 'Done', onPress: () => router.back() },
+        ]
       );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Could not save assessment.';
@@ -524,7 +601,7 @@ export default function NewAssessmentScreen() {
             <View style={styles.gpsBox}>
               <Text style={styles.gpsTitle}>GPS coordinates *</Text>
               <Text style={styles.gpsHint}>
-                RAPID uses your location to tag each assessment and derive elevation/slope features for AI.
+                {APP_NAME} uses your location to tag each assessment and derive elevation/slope features for AI.
               </Text>
               {gpsStatus === 'requesting' || gpsRefreshing ? (
                 <View style={styles.gpsRow}>
@@ -699,22 +776,58 @@ export default function NewAssessmentScreen() {
             <View style={styles.offlineNotice}>
               <Ionicons name="analytics-outline" size={20} color={WizardTheme.colors.infoText} />
               <Text style={styles.offlineText}>
-                Save sends this record to the server when the API is reachable. You always get an
-                on-device risk estimate below; full ResNet + tabular fusion runs after upload.
+                On-device ML (ResNet + Random Forest + fusion) runs on Android when models are
+                bundled. Works fully offline — upload enriches results for HQ when online.
               </Text>
             </View>
 
-            {offlineEstimate ? (
+            {predictingMl ? (
+              <View style={styles.mlLoadingRow}>
+                <ActivityIndicator size="small" color={WizardTheme.colors.primary} />
+                <Text style={styles.mlLoadingText}>Running on-device ML…</Text>
+              </View>
+            ) : null}
+
+            {fieldResult ? (
               <View style={styles.estimateCard}>
-                <Text style={styles.estimateEyebrow}>On-device estimate (offline-capable)</Text>
-                <Text style={styles.estimateLabel}>{offlineEstimate.fusedLabel}</Text>
-                <Text style={styles.estimateMeta}>
-                  {formatPercent(offlineEstimate.fusedConfidence, 0)} confidence
+                <Text style={styles.estimateEyebrow}>
+                  {fieldResult.prediction.source === 'device-ml-fusion'
+                    ? 'Field assessment (device ML fusion)'
+                    : 'Field assessment (heuristic fallback)'}
                 </Text>
-                {Object.entries(offlineEstimate.probabilities).map(([label, value]) => (
-                  <Text key={label} style={styles.estimateProb}>
-                    {label}: {formatPercent(value)}
+                <Text style={styles.estimateLabel}>{fieldResult.prediction.fusedLabel}</Text>
+                <Text style={styles.estimateMeta}>
+                  {formatPercent(fieldResult.prediction.fusedConfidence, 0)} confidence ·
+                  Priority {formatPercent(fieldResult.priorityScore, 0)}
+                </Text>
+                {fieldResult.prediction.imageLabel != null ? (
+                  <Text style={styles.estimateProb}>
+                    Image (ResNet): {fieldResult.prediction.imageLabel}{' '}
+                    {fieldResult.prediction.imageConfidence != null
+                      ? formatPercent(fieldResult.prediction.imageConfidence, 0)
+                      : ''}
                   </Text>
+                ) : null}
+                <Text style={styles.estimateProb}>
+                  Tabular (RF): {fieldResult.prediction.tabularLabel}{' '}
+                  {formatPercent(fieldResult.prediction.tabularConfidence, 0)}
+                </Text>
+                {Object.entries(fieldResult.prediction.probabilities).map(([label, value]) => (
+                  <Text key={label} style={styles.estimateProb}>
+                    Fused {label}: {formatPercent(value)}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {fieldResult ? (
+              <View style={styles.actionPlanCard}>
+                <Text style={styles.actionPlanTitle}>Action plan (on-device)</Text>
+                {fieldResult.actionPlan.recommendations.map((rec, i) => (
+                  <View key={i} style={styles.actionPlanRow}>
+                    <Text style={styles.actionPlanBullet}>{i + 1}.</Text>
+                    <Text style={styles.actionPlanText}>{rec}</Text>
+                  </View>
                 ))}
               </View>
             ) : null}
@@ -1215,6 +1328,50 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '600',
     textTransform: 'capitalize',
+  },
+  actionPlanCard: {
+    backgroundColor: WizardTheme.colors.card,
+    borderRadius: WizardTheme.radius.md,
+    padding: WizardTheme.spacing.md,
+    marginBottom: WizardTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+  },
+  actionPlanTitle: {
+    fontSize: WizardTheme.typography.label,
+    fontWeight: '800',
+    color: WizardTheme.colors.text,
+    marginBottom: WizardTheme.spacing.sm,
+  },
+  actionPlanRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 8,
+  },
+  actionPlanBullet: {
+    fontSize: WizardTheme.typography.helper,
+    fontWeight: '700',
+    color: WizardTheme.colors.primary,
+    minWidth: 18,
+  },
+  actionPlanText: {
+    flex: 1,
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.text,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  mlLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: WizardTheme.spacing.md,
+  },
+  mlLoadingText: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+    fontWeight: '600',
   },
   offlineNotice: {
     flexDirection: 'row',

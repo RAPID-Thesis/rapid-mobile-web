@@ -1,9 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 
+import type { LocalActionPlanResult } from './localActionPlan';
+import {
+  computeLocalPriorityScore,
+  generateLocalActionPlan,
+} from './localActionPlan';
 import type { LocalPredictionResult } from './localPredict';
 import { isApiUrlConfigured } from './api';
 import { getUserToken } from './auth';
+import type { LocationFix } from './location';
 import { submitAssessmentForMlSync, type WizardAssessmentSyncInput } from './sync';
 
 const STORAGE_KEY = 'rapid_assessment_outbox_v1';
@@ -14,6 +20,9 @@ export interface OutboxItem {
   createdAt: string;
   input: WizardAssessmentSyncInput;
   localPrediction: LocalPredictionResult;
+  /** On-device FEMA/ATC-20 action items — available immediately without network. */
+  localActionPlan?: LocalActionPlanResult;
+  localPriorityScore?: number;
   status: 'pending' | 'syncing' | 'failed';
   attempts: number;
   lastError?: string;
@@ -21,6 +30,31 @@ export interface OutboxItem {
 
 function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** Fill action plan / priority for outbox items saved before offline action plans shipped. */
+function hydrateOutboxItem(item: OutboxItem): OutboxItem {
+  let localActionPlan = item.localActionPlan;
+  let localPriorityScore = item.localPriorityScore;
+
+  if (!localActionPlan) {
+    localActionPlan = generateLocalActionPlan({
+      phase: item.localPrediction.phase,
+      label: item.localPrediction.fusedLabel,
+      confidence: item.localPrediction.fusedConfidence,
+    });
+  }
+  if (localPriorityScore == null) {
+    localPriorityScore = computeLocalPriorityScore(
+      item.localPrediction.fusedLabel,
+      item.localPrediction.fusedConfidence
+    );
+  }
+
+  if (localActionPlan === item.localActionPlan && localPriorityScore === item.localPriorityScore) {
+    return item;
+  }
+  return { ...item, localActionPlan, localPriorityScore };
 }
 
 async function readAll(): Promise<OutboxItem[]> {
@@ -40,7 +74,13 @@ async function writeAll(items: OutboxItem[]): Promise<void> {
 
 export async function listOutbox(): Promise<OutboxItem[]> {
   const items = await readAll();
-  return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return items.map(hydrateOutboxItem).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+export async function getOutboxItem(id: string): Promise<OutboxItem | null> {
+  const items = await readAll();
+  const found = items.find((i) => i.id === id);
+  return found ? hydrateOutboxItem(found) : null;
 }
 
 export async function getPendingOutboxCount(): Promise<number> {
@@ -73,6 +113,40 @@ async function replaceItem(updated: OutboxItem): Promise<void> {
 export async function removeOutbox(id: string): Promise<void> {
   const items = (await readAll()).filter((i) => i.id !== id);
   await writeAll(items);
+}
+
+export function isMissingGps(item: OutboxItem): boolean {
+  return item.input.latitude === 0 && item.input.longitude === 0;
+}
+
+/** Attach a GPS fix to a queued assessment so sync can proceed. */
+export async function updateOutboxGps(id: string, fix: LocationFix): Promise<OutboxItem | null> {
+  const items = await readAll();
+  const idx = items.findIndex((i) => i.id === id);
+  if (idx === -1) return null;
+
+  const item = items[idx];
+  const structural_data = {
+    ...item.input.structural_data,
+    gps_accuracy_m: fix.accuracy_m,
+    gps_captured_at: fix.capturedAt,
+  };
+
+  const updated: OutboxItem = {
+    ...item,
+    input: {
+      ...item.input,
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+      structural_data,
+    },
+    status: 'pending',
+    lastError: undefined,
+  };
+
+  items[idx] = updated;
+  await writeAll(items);
+  return hydrateOutboxItem(updated);
 }
 
 function isReachable(state: Awaited<ReturnType<typeof NetInfo.fetch>>): boolean {
@@ -117,7 +191,7 @@ async function processOutboxOnce(): Promise<void> {
       await replaceItem({
         ...item,
         status: 'failed',
-        lastError: 'GPS coordinates are missing (0,0). Re-capture location and resubmit.',
+        lastError: 'GPS coordinates are missing (0,0). Open this assessment and tap Capture GPS now.',
       });
       continue;
     }

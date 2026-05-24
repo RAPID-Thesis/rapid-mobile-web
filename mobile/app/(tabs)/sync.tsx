@@ -16,7 +16,7 @@ import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../c
 import { platformShadow } from '../../utils/platformShadow';
 import TextBody from '../../components/CustomText';
 import { isApiUrlConfigured } from '../../services/api';
-import { listOutbox, processOutbox, type OutboxItem } from '../../services/outbox';
+import { isMissingGps, listOutbox, processOutbox, type OutboxItem } from '../../services/outbox';
 import { useAuth } from '../../context/AuthContext';
 
 export default function SyncScreen() {
@@ -100,8 +100,8 @@ export default function SyncScreen() {
           <View style={styles.signInBannerText}>
             <Text style={styles.signInBannerTitle}>Sign in or sign up to upload</Text>
             <TextBody style={styles.signInBannerBody}>
-              Assessments stay saved on this device while offline. Upload starts after an approved
-              account signs in.
+              Field triage is complete on this device. Sign in when convenient to upload records to
+              HQ for ML refinement and engineer review.
             </TextBody>
           </View>
         </View>
@@ -142,8 +142,8 @@ export default function SyncScreen() {
           <Ionicons name="checkmark-done-circle" size={48} color={Colors.success} />
           <TextBody style={styles.emptyTitle}>All synced up!</TextBody>
           <TextBody style={styles.emptyBody}>
-            New assessments saved offline appear here until they reach the server. They upload
-            automatically when you are back online.
+            Field assessments with risk labels and action plans are saved on this device. They
+            upload automatically when you are back online — inspection never waits for signal.
           </TextBody>
         </View>
       ) : (
@@ -153,7 +153,11 @@ export default function SyncScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           renderItem={({ item }) => (
-            <View style={styles.row}>
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => router.push(`/assessment/${item.id}`)}
+              activeOpacity={0.85}
+            >
               <View style={styles.rowIcon}>
                 <Ionicons
                   name={item.status === 'failed' ? 'warning-outline' : 'phone-portrait-outline'}
@@ -164,16 +168,19 @@ export default function SyncScreen() {
               <View style={styles.rowBody}>
                 <TextBody style={styles.rowTitle}>{item.input.building_code}</TextBody>
                 <TextBody style={styles.rowMeta}>
-                  Estimate: {item.localPrediction.fusedLabel} ·{' '}
-                  {item.status === 'pending'
-                    ? !session
-                      ? 'Waiting — sign in to upload'
-                      : apiReady
-                        ? 'Waiting to upload'
-                        : 'Blocked — set EXPO_PUBLIC_API_URL'
-                    : item.status === 'syncing'
-                      ? 'Uploading…'
-                      : 'Upload failed — retry'}
+                  {item.localPrediction.fusedLabel} ·{' '}
+                  {item.localActionPlan?.recommendations.length ?? 0} action items ·{' '}
+                  {isMissingGps(item)
+                    ? 'GPS missing — tap to capture'
+                    : item.status === 'pending'
+                      ? !session
+                        ? 'On device — sign in to upload'
+                        : apiReady
+                          ? 'Ready to upload'
+                          : 'Blocked — set EXPO_PUBLIC_API_URL'
+                      : item.status === 'syncing'
+                        ? 'Uploading…'
+                        : 'Upload failed — retry'}
                 </TextBody>
                 {item.lastError ? (
                   <TextBody style={styles.rowErr} selectable numberOfLines={12}>
@@ -184,7 +191,7 @@ export default function SyncScreen() {
                   {new Date(item.createdAt).toLocaleString()}
                 </TextBody>
               </View>
-            </View>
+            </TouchableOpacity>
           )}
         />
       )}

@@ -5,10 +5,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, FontSize, BorderRadius, MinTouchTarget } from '../../constants/theme';
+import { APP_NAME } from '../../constants/branding';
 import { platformShadow } from '../../utils/platformShadow';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
-import { getPendingOutboxCount } from '../../services/outbox';
+import { listOutbox } from '../../services/outbox';
 
 function StatCard({ icon, label, value, color }: { icon: string; label: string; value: number; color: string }) {
   return (
@@ -28,10 +29,20 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const outboxPending = await getPendingOutboxCount();
+    const localItems = await listOutbox();
+    const outboxPending = localItems.length;
+    const localHighRisk = localItems.filter(
+      (i) =>
+        i.localPrediction.fusedLabel === 'high' || i.localPrediction.fusedLabel === 'UNSAFE'
+    ).length;
 
     if (!session) {
-      setStats({ total: 0, pending: 0, highRisk: 0, toSync: outboxPending });
+      setStats({
+        total: outboxPending,
+        pending: outboxPending,
+        highRisk: localHighRisk,
+        toSync: outboxPending,
+      });
       setLoading(false);
       return;
     }
@@ -39,9 +50,11 @@ export default function HomeScreen() {
     const { data } = await supabase.from('assessments').select('status, ai_fused_label');
     const list = data ?? [];
     setStats({
-      total: list.length,
-      pending: list.filter((a) => a.status === 'pending-review').length,
-      highRisk: list.filter((a) => a.ai_fused_label === 'high' || a.ai_fused_label === 'UNSAFE').length,
+      total: list.length + outboxPending,
+      pending: list.filter((a) => a.status === 'pending-review').length + outboxPending,
+      highRisk:
+        list.filter((a) => a.ai_fused_label === 'high' || a.ai_fused_label === 'UNSAFE').length +
+        localHighRisk,
       toSync: list.filter((a) => a.status === 'pending-sync').length + outboxPending,
     });
     setLoading(false);
@@ -66,7 +79,7 @@ export default function HomeScreen() {
         end={{ x: 1, y: 1 }}
         style={styles.heroCard}
       >
-        <Text style={styles.heroEyebrow}>RAPID FIELD OPERATIONS</Text>
+        <Text style={styles.heroEyebrow}>{APP_NAME} FIELD OPERATIONS</Text>
         <Text style={styles.greeting}>Welcome, {displayName}</Text>
         <Text style={styles.role}>{roleLabel}{lguCode ? ` \u2022 ${lguCode}` : ''}</Text>
         <View style={styles.heroPills}>

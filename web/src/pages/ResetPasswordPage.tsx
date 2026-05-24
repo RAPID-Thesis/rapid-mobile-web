@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { APP_NAME } from '../lib/branding';
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -136,7 +137,7 @@ export default function ResetPasswordPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500 text-white text-3xl font-black mb-4">
             R
           </div>
-          <h1 className="text-3xl font-black text-white tracking-wider">RAPID</h1>
+          <h1 className="text-3xl font-black text-white tracking-wider">{APP_NAME}</h1>
           <p className="text-blue-300 text-sm mt-1">Choose a new password</p>
         </div>
 

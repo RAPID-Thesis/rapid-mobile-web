@@ -167,7 +167,7 @@ export default function HeatmapPage() {
         const building = buildings.find((b) => b.id === a.building_id);
         if (!building) return null;
         if (building.latitude === 0 || building.longitude === 0) return null;
-        if (districtBarangaySet && !districtBarangaySet.has(building.barangay)) return null;
+        if (districtBarangaySet && !(districtBarangaySet as Set<string>).has(building.barangay)) return null;
         if (barangayFilter && building.barangay !== barangayFilter) return null;
         return {
           id: a.id,
@@ -230,7 +230,7 @@ export default function HeatmapPage() {
               setDistrictFilter(next);
               if (!next) {
                 setBarangayFilter('');
-              } else if (barangayFilter && !SJDM_DISTRICTS[next].includes(barangayFilter)) {
+              } else if (barangayFilter && !(SJDM_DISTRICTS[next] as readonly string[]).includes(barangayFilter)) {
                 setBarangayFilter('');
               }
             }}

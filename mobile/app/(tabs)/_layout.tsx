@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize } from '../../constants/theme';
+import { APP_NAME } from '../../constants/branding';
 import { platformShadow } from '../../utils/platformShadow';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
@@ -40,7 +41,7 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} />,
-          headerTitle: 'RAPID',
+          headerTitle: APP_NAME,
         }}
       />
       <Tabs.Screen

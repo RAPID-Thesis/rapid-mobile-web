@@ -1,3 +1,7 @@
+# Generated deploy artifacts
+dist/
+.railway-staging/
+
 # Environment files (contain secrets)
 .env
 .env.local

@@ -1,0 +1,32 @@
+# Railway CLI upload ignore (monorepo - API service only).
+# ML models are downloaded at Docker build via ML_ARTIFACTS_URL, not uploaded here.
+
+mobile/
+web/
+api/
+node_modules/
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+.git/
+.github/
+.cursor/
+terminals/
+*.md
+
+# Large local-only paths
+ml/data/
+ml/artifacts/*.joblib
+ml/artifacts/*.keras
+ml/artifacts/resnet50_*/
+
+# Android / IDE
+mobile/android/
+**/.gradle/
+**/.idea/
+**/.vscode/
+
+# Env secrets (set on Railway dashboard / CLI instead)
+**/.env
+**/.env.*

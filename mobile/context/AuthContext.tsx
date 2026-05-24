@@ -15,15 +15,27 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
-async function fetchProfile(userId: string): Promise<UserProfile | null> {
-  const { data } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      setTimeout(() => resolve(fallback), ms);
+    }),
+  ]);
+}
 
-  if (!data) return null;
-  return data as UserProfile;
+async function fetchProfile(userId: string): Promise<UserProfile | null> {
+  try {
+    const { data } = await withTimeout(
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      8000,
+      { data: null, error: null },
+    );
+    if (!data) return null;
+    return data as UserProfile;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -74,8 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    supabase.auth
-      .getSession()
+    void withTimeout(supabase.auth.getSession(), 8000, { data: { session: null }, error: null })
       .then(({ data: { session: s } }) => {
         if (cancelled) return;
         handleSession(s);

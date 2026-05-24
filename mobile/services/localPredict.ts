@@ -19,7 +19,7 @@ export interface OfflineStructuralForm {
   fallingHazard: boolean;
 }
 
-export type LocalPredictionSource = 'device-offline-heuristic';
+export type LocalPredictionSource = 'device-offline-heuristic' | 'device-ml-fusion';
 
 export interface LocalPredictionResult {
   phase: 'pre' | 'post';
@@ -31,6 +31,10 @@ export interface LocalPredictionResult {
   imageLabel: string | null;
   imageConfidence: number | null;
   source: LocalPredictionSource;
+  /** Per-branch outputs when device-ml-fusion ran successfully. */
+  imageProbabilities?: Record<string, number> | null;
+  tabularProbabilities?: Record<string, number> | null;
+  fusionWeights?: { image: number; tabular: number } | null;
 }
 
 const PRE_ORDER = ['low', 'moderate', 'high'] as const;

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "RAPID",
+    "name": "RADAR",
     "slug": "rapid",
     "scheme": "rapid",
     "version": "1.0.0",
@@ -38,7 +38,12 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      "onnxruntime-react-native",
+      "react-native-fast-tflite"
+    ],
+    "assetBundlePatterns": [
+      "assets/**/*"
     ],
     "extra": {
       "router": {},

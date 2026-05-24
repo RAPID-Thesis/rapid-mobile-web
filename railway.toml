@@ -1,0 +1,13 @@
+# RAPID API — Railway config-as-code (repo root; Dockerfile copies backend/ + ml/).
+# Docs: https://docs.railway.com/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
+watchPatterns = ["backend/**", "ml/**"]
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 600
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

@@ -1,5 +1,6 @@
 import type { Assessment, Building } from '../types';
 import { formatPercent } from './formatPercent';
+import { APP_NAME } from './branding';
 
 /** Browser “Save as PDF” / print — FEMA P-154–style layout (MVP). */
 export function openPrintableAssessmentReport(
@@ -12,7 +13,7 @@ export function openPrintableAssessmentReport(
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>RAPID RVS Report — ${building?.building_code ?? assessment.id}</title>
+  <title>${APP_NAME} RVS Report — ${building?.building_code ?? assessment.id}</title>
   <style>
     body { font-family: Georgia, serif; max-width: 800px; margin: 24px auto; color: #111; }
     h1 { font-size: 1.35rem; border-bottom: 2px solid #1e3a5f; padding-bottom: 8px; }
@@ -27,7 +28,7 @@ export function openPrintableAssessmentReport(
 </head>
 <body>
   <div class="banner">
-    <strong>RAPID</strong> — Rapid Visual Screening / Damage Assessment (MVP)
+    <strong>${APP_NAME}</strong> — Rapid Visual Screening / Damage Assessment (MVP)
   </div>
   <h1>FEMA P-154 / ATC-20 Assessment Summary</h1>
   <p class="muted">Generated ${new Date().toLocaleString()} · Report ID: ${assessment.id}</p>

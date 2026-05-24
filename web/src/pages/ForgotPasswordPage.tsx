@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { APP_NAME } from '../lib/branding';
 
 export default function ForgotPasswordPage() {
   const { requestPasswordReset } = useAuth();
@@ -37,7 +38,7 @@ export default function ForgotPasswordPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500 text-white text-3xl font-black mb-4">
             R
           </div>
-          <h1 className="text-3xl font-black text-white tracking-wider">RAPID</h1>
+          <h1 className="text-3xl font-black text-white tracking-wider">{APP_NAME}</h1>
           <p className="text-blue-300 text-sm mt-1">Reset your portal password</p>
         </div>
 
@@ -49,7 +50,7 @@ export default function ForgotPasswordPage() {
 
           {sent ? (
             <div className="rounded-lg bg-emerald-50 text-emerald-800 text-sm p-4 border border-emerald-200">
-              Check your inbox for a message from RAPID / Supabase. The link expires after a short
+              Check your inbox for a message from {APP_NAME} / Supabase. The link expires after a short
               time. You can close this tab after you finish resetting your password.
             </div>
           ) : (

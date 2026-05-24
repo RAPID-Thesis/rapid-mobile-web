@@ -1,0 +1,6 @@
+# Extra deps for ml/scripts/export_mobile_models.py and parity tests.
+# Install in backend venv: pip install -r ml/requirements-export.txt
+tensorflow>=2.20,<2.21
+skl2onnx>=1.17
+onnx>=1.16
+onnxruntime>=1.19

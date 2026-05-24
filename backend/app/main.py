@@ -34,6 +34,7 @@ from .schemas import (
 )
 from .security import get_current_user, require_roles
 from .services.ml_fusion_engine import (
+    MODEL_DIR,
     TabularInput,
     predict_fused,
     predict_image,
@@ -716,4 +717,16 @@ def root():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "0.2.0"}
+    artifact_names = (
+        "rf_pre.joblib",
+        "rf_post.joblib",
+        "resnet50_pre.keras",
+        "resnet50_post.keras",
+    )
+    missing = [name for name in artifact_names if not (MODEL_DIR / name).exists()]
+    return {
+        "status": "ok",
+        "version": "0.2.0",
+        "ml_artifacts_ready": len(missing) == 0,
+        "missing_artifacts": missing or None,
+    }
