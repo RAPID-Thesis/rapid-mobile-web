@@ -73,7 +73,9 @@ function Build-RailwayStaging {
     New-Item -ItemType Directory -Force -Path $mlArtifactsDest | Out-Null
 
     Get-ChildItem (Join-Path $Root "backend") -Recurse -File | Where-Object {
-        $_.FullName -notmatch '\\\.venv\\' -and $_.FullName -notmatch '\\venv\\'
+        $_.FullName -notmatch '\\\.venv\\' -and
+        $_.FullName -notmatch '\\\.venv-test\\' -and
+        $_.FullName -notmatch '\\venv\\'
     } | ForEach-Object {
         $rel = $_.FullName.Substring((Join-Path $Root "backend").Length + 1)
         $dest = Join-Path $backendDest $rel
