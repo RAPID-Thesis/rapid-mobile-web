@@ -27,6 +27,16 @@ MOBILE_ASSETS = REPO_ROOT / "mobile" / "assets" / "models"
 
 PRE_CLASSES = ["high", "low", "moderate"]
 POST_CLASSES = ["RESTRICTED", "SAFE", "UNSAFE"]
+
+# The ResNet is trained on folders named low/moderate/high, so its output axis is ALWAYS the
+# alphabetical pre-EQ order regardless of phase. Remapped to ATC-20 that is
+# (UNSAFE, SAFE, RESTRICTED) -- not POST_CLASSES, which is alphabetical
+# (RESTRICTED, SAFE, UNSAFE). Publishing POST_CLASSES as the network's output order swapped
+# UNSAFE and RESTRICTED on the device. The RF is unaffected: scikit-learn sorts its labels, so
+# its output really is POST_CLASSES order.
+PRE_TO_POST = {"low": "SAFE", "moderate": "RESTRICTED", "high": "UNSAFE"}
+RESNET_OUTPUT_PRE = PRE_CLASSES
+RESNET_OUTPUT_POST = [PRE_TO_POST[c] for c in PRE_CLASSES]
 IMAGE_WEIGHT = 0.45
 TABULAR_WEIGHT = 0.55
 
@@ -236,18 +246,46 @@ def main() -> int:
         action="store_true",
         help="Copy ml/artifacts/mobile/* into mobile/assets/models/",
     )
+    parser.add_argument(
+        "--only",
+        choices=["all", "resnet", "rf"],
+        default="all",
+        help="Export only one branch. The mobile artifacts are tracked in git and the two "
+             "TFLite files are ~94 MB, so re-exporting an unchanged branch produces a large "
+             "diff for nothing. Entries for the skipped branch are carried over from the "
+             "existing manifest.",
+    )
     args = parser.parse_args()
 
     _require_files()
     MOBILE_OUT.mkdir(parents=True, exist_ok=True)
 
-    print("Exporting ResNet50 -> TFLite (float16)...")
-    resnet_pre = _export_resnet_tflite("pre", MOBILE_OUT)
-    resnet_post = _export_resnet_tflite("post", MOBILE_OUT)
+    previous: dict = {}
+    manifest_path = MOBILE_OUT / "mobile_manifest.json"
+    if args.only != "all":
+        if not manifest_path.exists():
+            print(f"--only {args.only} needs an existing {manifest_path} to carry the other "
+                  f"branch forward. Run a full export first.", file=sys.stderr)
+            return 1
+        previous = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    print("Exporting Random Forest -> ONNX...")
-    rf_pre = _export_rf_onnx("pre", MOBILE_OUT)
-    rf_post = _export_rf_onnx("post", MOBILE_OUT)
+    if args.only in ("all", "resnet"):
+        print("Exporting ResNet50 -> TFLite (float16)...")
+        resnet_pre = _export_resnet_tflite("pre", MOBILE_OUT)
+        resnet_post = _export_resnet_tflite("post", MOBILE_OUT)
+    else:
+        print("Skipping ResNet (--only rf); reusing manifest entries.")
+        resnet_pre = previous["pre"]["resnet"]
+        resnet_post = previous["post"]["resnet"]
+
+    if args.only in ("all", "rf"):
+        print("Exporting Random Forest -> ONNX...")
+        rf_pre = _export_rf_onnx("pre", MOBILE_OUT)
+        rf_post = _export_rf_onnx("post", MOBILE_OUT)
+    else:
+        print("Skipping Random Forest (--only resnet); reusing manifest entries.")
+        rf_pre = previous["pre"]["rf"]
+        rf_post = previous["post"]["rf"]
 
     manifest = {
         "exported_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -257,11 +295,17 @@ def main() -> int:
         },
         "pre": {
             "classes": PRE_CLASSES,
+            # Canonical order for labels/fusion; the ResNet's raw axis is published separately
+            # because the two differ for post-EQ.
+            "resnet_output_classes": RESNET_OUTPUT_PRE,
+            "rf_output_classes": PRE_CLASSES,
             "resnet": resnet_pre,
             "rf": rf_pre,
         },
         "post": {
             "classes": POST_CLASSES,
+            "resnet_output_classes": RESNET_OUTPUT_POST,
+            "rf_output_classes": POST_CLASSES,
             "resnet": resnet_post,
             "rf": rf_post,
         },

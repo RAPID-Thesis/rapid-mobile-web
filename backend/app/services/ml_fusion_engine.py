@@ -10,6 +10,7 @@ that never touch inference do not pay the ~500 MB import cost.
 from __future__ import annotations
 
 import gzip
+import json
 import logging
 import math
 import os
@@ -43,6 +44,28 @@ TABULAR_WEIGHT = float(os.getenv("FUSION_TABULAR_WEIGHT", "0.55"))
 PRE_CLASSES = ("high", "low", "moderate")
 POST_CLASSES = ("RESTRICTED", "SAFE", "UNSAFE")
 
+# Canonical severity remap. Both phases share one visual severity model (see
+# ml/train_resnet50.py); the ATC-20 names are a relabeling of the FEMA P-154 ones.
+PRE_TO_POST = {"low": "SAFE", "moderate": "RESTRICTED", "high": "UNSAFE"}
+
+
+def _resnet_output_classes(phase: str) -> tuple[str, ...]:
+    """Class order the ResNet actually emits, which is NOT the canonical order for post.
+
+    The network is trained by ``image_dataset_from_directory`` on folders named
+    low/moderate/high, so its output axis is always alphabetical PRE order
+    ``(high, low, moderate)``. Under the ATC-20 remap that is
+    ``(UNSAFE, SAFE, RESTRICTED)`` -- whereas ``POST_CLASSES`` is alphabetical
+    ``(RESTRICTED, SAFE, UNSAFE)``.
+
+    Reading the raw output against POST_CLASSES therefore swapped UNSAFE and RESTRICTED:
+    the most severely damaged buildings were posted "limited entry" instead of "do not
+    enter", and the reverse. Probabilities must be re-keyed through this order before use.
+    """
+    if phase == "pre":
+        return PRE_CLASSES
+    return tuple(PRE_TO_POST[c] for c in PRE_CLASSES)
+
 
 # ---------- Mobile → training-vocabulary mappings ----------
 
@@ -60,7 +83,12 @@ _MATERIAL_MAP = {
 _STRUCTURAL_SYSTEM_MAP = {
     "moment resisting frame": "moment_frame",
     "shear wall system": "shear_wall",
-    "unreinforced masonry": "unknown",
+    # Unreinforced masonry is the most vulnerable common system in FEMA P-154 and the dominant
+    # residential typology here (unreinforced CHB). It previously collapsed to "unknown"
+    # because the training data had no such category, discarding the strongest vulnerability
+    # signal an inspector can record. The category now exists in generate_synthetic_data.py.
+    "unreinforced masonry": "unreinforced_masonry",
+    "unreinforced_masonry": "unreinforced_masonry",
     "braced frame": "braced_frame",
     "moment_frame": "moment_frame",
     "shear_wall": "shear_wall",
@@ -147,6 +175,81 @@ def _phase_key(phase: str) -> str:
     if p.startswith("post"):
         return "post"
     raise ValueError(f"Unknown phase: {phase!r}")
+
+
+# ---------- Fault distance lookup (shared with the device) ----------
+#
+# The device computes distance_to_fault_km offline from ml/artifacts/mobile/sjdm_geo.json
+# (see mobile/services/ml/geoLookup.ts). The server previously had no equivalent, so the
+# feature arrived as None and the RF's median imputer filled it in -- silently discarding the
+# single highest-weighted risk driver on every server-side prediction, and disagreeing with
+# the device for the same building.
+#
+# Reading the same bundle and repeating the same nearest-segment math keeps the two paths in
+# parity by construction rather than by convention.
+
+GEO_BUNDLE_PATH = Path(
+    os.getenv("GEO_BUNDLE_PATH", str(MODEL_DIR / "mobile" / "sjdm_geo.json"))
+).resolve()
+
+# Mirrors nearestFaultKm() in mobile/services/ml/geoLookup.ts: 999 sentinel, 25 km fallback.
+_FAULT_SENTINEL_KM = 999.0
+_FAULT_FALLBACK_KM = 25.0
+
+
+def _load_geo_bundle() -> dict[str, Any] | None:
+    if "_geo" in _cache:
+        return _cache["_geo"]
+    with _lock:
+        if "_geo" in _cache:
+            return _cache["_geo"]
+        try:
+            with open(GEO_BUNDLE_PATH, encoding="utf-8") as fh:
+                _cache["_geo"] = json.load(fh)
+        except Exception as exc:
+            logger.warning(
+                "Geo bundle unavailable at %s (%s); distance_to_fault_km will fall back to "
+                "the RF's median imputation and will NOT match the device.",
+                GEO_BUNDLE_PATH, exc,
+            )
+            _cache["_geo"] = None
+        return _cache["_geo"]
+
+
+def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    r = 6371.0
+    p = math.pi / 180.0
+    dlat = (lat2 - lat1) * p
+    dlon = (lon2 - lon1) * p
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1 * p) * math.cos(lat2 * p) * math.sin(dlon / 2) ** 2
+    )
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _point_to_segment_km(plon: float, plat: float, a: list[float], b: list[float]) -> float:
+    ax, ay, bx, by = a[0], a[1], b[0], b[1]
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return _haversine_km(plon, plat, ax, ay)
+    t = max(0.0, min(1.0, ((plon - ax) * dx + (plat - ay) * dy) / (dx * dx + dy * dy)))
+    return _haversine_km(plon, plat, ax + t * dx, ay + t * dy)
+
+
+def _nearest_fault_km(lat: float, lon: float) -> float | None:
+    """Distance to the nearest mapped fault segment, or None if the bundle is missing."""
+    bundle = _load_geo_bundle()
+    if not bundle:
+        return None
+
+    best = _FAULT_SENTINEL_KM
+    for seg in bundle.get("fault_segments", []):
+        for i in range(len(seg) - 1):
+            d = _point_to_segment_km(lon, lat, seg[i], seg[i + 1])
+            if d < best:
+                best = d
+    return best if best < 900 else _FAULT_FALLBACK_KM
 
 
 # ---------- SRTM elevation / slope lookup ----------
@@ -300,6 +403,14 @@ def build_tabular_input(
         elev = elev if elev is not None else auto_elev
         slope = slope if slope is not None else auto_slope
 
+    # The mobile wizard does not submit fault distance -- it is derived from the GPS fix on the
+    # device and must be derived the same way here, or the RF loses its top-weighted feature.
+    fault_km = _to_float(
+        sd.get("distance_to_fault_km") or building.get("distance_to_fault_km")
+    )
+    if fault_km is None and latitude is not None and longitude is not None:
+        fault_km = _nearest_fault_km(float(latitude), float(longitude))
+
     return TabularInput(
         year_built=year_built,
         number_of_stories=stories,
@@ -309,7 +420,7 @@ def build_tabular_input(
             _SOIL_MAP,
             default="D",
         ),
-        distance_to_fault_km=_to_float(sd.get("distance_to_fault_km") or building.get("distance_to_fault_km")),
+        distance_to_fault_km=fault_km,
         elevation_m=_to_float(elev),
         slope_deg=_to_float(slope),
         previous_retrofit=bool(sd.get("previous_retrofit") or building.get("previous_retrofit") or False),
@@ -374,12 +485,18 @@ def predict_image(images: list[bytes], phase: str) -> dict[str, Any]:
     batch = np.stack([_preprocess_image(b) for b in images], axis=0)
     probs = model.predict(batch, verbose=0)
     mean_probs = probs.mean(axis=0)
-    idx = int(np.argmax(mean_probs))
+
+    # Re-key from the network's own output order into the canonical order for this phase.
+    # For "post" these differ, and reading the raw axis directly swapped UNSAFE/RESTRICTED.
+    output_classes = _resnet_output_classes(phase_key)
+    by_class = {cls: float(p) for cls, p in zip(output_classes, mean_probs, strict=True)}
+    ordered = [by_class[cls] for cls in classes]
+    idx = int(np.argmax(ordered))
 
     return {
         "label": classes[idx],
-        "confidence": float(mean_probs[idx]),
-        "probabilities": {cls: float(p) for cls, p in zip(classes, mean_probs, strict=True)},
+        "confidence": float(ordered[idx]),
+        "probabilities": {cls: by_class[cls] for cls in classes},
         "image_count": len(images),
     }
 

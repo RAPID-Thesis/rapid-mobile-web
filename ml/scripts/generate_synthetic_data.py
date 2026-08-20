@@ -45,7 +45,12 @@ PROJECTED_CRS = "EPSG:32651"  # UTM zone 51N (meters) — Metro Manila / Central
 
 BUILDING_USES = ["residential", "commercial", "institutional", "industrial", "mixed"]
 SOILS = ["A", "B", "C", "D", "E", "F"]
-STRUCTURAL = ["moment_frame", "shear_wall", "braced_frame", "wood_frame", "unknown"]
+# "unreinforced_masonry" matters for this study area: unreinforced CHB is the dominant
+# residential typology in San Jose del Monte and the most seismically vulnerable system in
+# FEMA P-154. Without the category the app's "Unreinforced Masonry" option had nowhere to map
+# and was silently collapsed to "unknown", erasing the single strongest vulnerability signal
+# an inspector can record.
+STRUCTURAL = ["moment_frame", "shear_wall", "braced_frame", "wood_frame", "unreinforced_masonry", "unknown"]
 FOUNDATIONS = ["shallow", "deep", "mat", "unknown"]
 MATERIALS = ["concrete", "wood", "mixed"]
 
@@ -96,7 +101,12 @@ def _material_weight(mat: str) -> float:
 
 
 def _structural_weight(sys: str) -> float:
-    return {"shear_wall": 0.05, "moment_frame": 0.1, "braced_frame": 0.12, "wood_frame": 0.28, "unknown": 0.2}[sys]
+    # Unreinforced masonry carries the highest penalty: it is the least ductile common system
+    # and the one FEMA P-154 scores most severely.
+    return {
+        "shear_wall": 0.05, "moment_frame": 0.1, "braced_frame": 0.12,
+        "wood_frame": 0.28, "unreinforced_masonry": 0.38, "unknown": 0.2,
+    }[sys]
 
 
 def _foundation_weight(ft: str) -> float:
@@ -375,11 +385,22 @@ def fema_p154_sample_attributes(
             mat = rng.choice(MATERIALS, p=[0.35, 0.35, 0.30])
 
         if mat == "wood":
+            # Masonry systems do not apply to timber construction.
             struct = rng.choice(["wood_frame", "unknown", "braced_frame"], p=[0.65, 0.25, 0.10])
         elif mat == "concrete":
-            struct = rng.choice(["shear_wall", "moment_frame", "unknown", "braced_frame"], p=[0.35, 0.30, 0.20, 0.15])
+            # "concrete" covers both RC frames and concrete hollow block. Unreinforced CHB is
+            # the dominant low-rise residential typology in San Jose del Monte and is markedly
+            # more common in stock predating consistent code enforcement.
+            pre_code = pd.isna(year_built) or int(year_built) < 1992
+            struct = rng.choice(
+                ["unreinforced_masonry", "shear_wall", "moment_frame", "unknown", "braced_frame"],
+                p=[0.34, 0.24, 0.20, 0.14, 0.08] if pre_code
+                else [0.16, 0.34, 0.28, 0.14, 0.08],
+            )
         else:
-            struct = rng.choice(STRUCTURAL, p=[0.25, 0.25, 0.15, 0.15, 0.20])
+            # STRUCTURAL order: moment_frame, shear_wall, braced_frame, wood_frame,
+            # unreinforced_masonry, unknown
+            struct = rng.choice(STRUCTURAL, p=[0.22, 0.22, 0.12, 0.12, 0.18, 0.14])
 
         soil = soil_nehrp[i]
 

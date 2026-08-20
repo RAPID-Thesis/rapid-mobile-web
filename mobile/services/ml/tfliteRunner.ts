@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { classesForPhase, IMG_SIZE, phaseKey } from './constants';
+import { classesForPhase, IMG_SIZE, phaseKey, resnetOutputClasses } from './constants';
 import type { BranchPrediction } from './fusion';
 import { getMobileManifest, modelPath } from './modelLoader';
 import { applyResNetPreprocess } from './resnetPreprocess';
@@ -81,9 +81,11 @@ export async function runResNetTflite(params: {
 }): Promise<BranchPrediction> {
   const pk = phaseKey(params.phase);
   const classes = classesForPhase(params.phase);
+  // The model's own output order differs from the canonical order for post-EQ.
+  const outputClasses = resnetOutputClasses(params.phase);
   const model = await loadModel(pk);
 
-  const sums = new Array(classes.length).fill(0);
+  const sums = new Array(outputClasses.length).fill(0);
   for (const rgb of params.rgbBatch) {
     if (rgb.length !== IMG_SIZE * IMG_SIZE * 3) {
       throw new Error(`Expected RGB ${IMG_SIZE}x${IMG_SIZE}x3`);
@@ -91,14 +93,19 @@ export async function runResNetTflite(params: {
     const preprocessed = applyResNetPreprocess(rgb);
     const outputs = await model.run([preprocessed]);
     const probs = normalizeOutputArray(outputs[0]);
-    for (let i = 0; i < classes.length; i++) {
+    for (let i = 0; i < outputClasses.length; i++) {
       sums[i] += probs[i] ?? 0;
     }
   }
   const n = params.rgbBatch.length;
+  // Key by the model's true output order, then read back in canonical order.
+  const byClass: Record<string, number> = {};
+  outputClasses.forEach((c, i) => {
+    byClass[c] = (sums[i] ?? 0) / n;
+  });
   const probabilities: Record<string, number> = {};
-  classes.forEach((c, i) => {
-    probabilities[c] = (sums[i] ?? 0) / n;
+  classes.forEach((c) => {
+    probabilities[c] = byClass[c] ?? 0;
   });
   const { label, confidence } = bestLabel(probabilities);
   return { label, confidence, probabilities };

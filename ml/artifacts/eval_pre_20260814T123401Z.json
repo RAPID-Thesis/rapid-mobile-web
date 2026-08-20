@@ -1,0 +1,94 @@
+{
+  "evaluated_at_utc": "2026-08-14T12:34:01.890011+00:00",
+  "phase": "pre",
+  "model": "D:\\thesis\\rapid\\ml\\artifacts\\resnet50_pre.keras",
+  "data_dir": "D:\\thesis\\rapid\\ml\\data\\images_eval",
+  "n_images": 188,
+  "class_names": [
+    "high",
+    "low",
+    "moderate"
+  ],
+  "confusion_matrix": [
+    [
+      9,
+      0,
+      0
+    ],
+    [
+      7,
+      0,
+      11
+    ],
+    [
+      156,
+      1,
+      4
+    ]
+  ],
+  "per_class": {
+    "high": {
+      "support": 9,
+      "predicted": 172,
+      "true_positives": 9,
+      "precision": 0.05232558139534884,
+      "precision_ci95": [
+        0.0277694432649553,
+        0.09644234734659511
+      ],
+      "recall": 1.0,
+      "recall_ci95": [
+        0.7008472464490407,
+        1.0
+      ],
+      "f1": 0.09944751381215469
+    },
+    "low": {
+      "support": 18,
+      "predicted": 1,
+      "true_positives": 0,
+      "precision": 0.0,
+      "precision_ci95": [
+        0.0,
+        0.7934567085261071
+      ],
+      "recall": 0.0,
+      "recall_ci95": [
+        0.0,
+        0.1758845505823749
+      ],
+      "f1": 0.0
+    },
+    "moderate": {
+      "support": 161,
+      "predicted": 15,
+      "true_positives": 4,
+      "precision": 0.26666666666666666,
+      "precision_ci95": [
+        0.1089727610318281,
+        0.5195088965768675
+      ],
+      "recall": 0.024844720496894408,
+      "recall_ci95": [
+        0.009702928100705496,
+        0.06213330741266006
+      ],
+      "f1": 0.04545454545454545
+    }
+  },
+  "accuracy": 0.06914893617021277,
+  "accuracy_ci95": [
+    0.040852626024894284,
+    0.11470070547359196
+  ],
+  "macro_f1": 0.048300686422233376,
+  "baseline_accuracy": 0.8563829787234043,
+  "baseline_label": "moderate",
+  "mean_confidence": 0.8840294309118961,
+  "prediction_counts": {
+    "moderate": 15,
+    "high": 172,
+    "low": 1
+  },
+  "collapse_ratio": 0.9148936170212766
+}

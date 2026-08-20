@@ -155,16 +155,26 @@ def main() -> int:
     ok = True
     for phase_key, phase_api in [("pre", "pre-earthquake"), ("post", "post-earthquake")]:
         classes = manifest[phase_key]["classes"]
+        # The ResNet's raw output axis is not the canonical class order for post-EQ. Older
+        # manifests lack the field, in which case the two coincide only for "pre".
+        resnet_classes = manifest[phase_key].get("resnet_output_classes", classes)
+        rf_classes = manifest[phase_key].get("rf_output_classes", classes)
         print(f"\n=== {phase_key.upper()} ===")
+        if list(resnet_classes) != list(classes):
+            print(f"  (ResNet output order {resnet_classes} differs from canonical {classes})")
 
         py_img = predict_image([jpeg], phase_api)
-        tflite_img = _run_tflite(MOBILE / manifest[phase_key]["resnet"]["file"], jpeg, classes)
+        tflite_img = _run_tflite(
+            MOBILE / manifest[phase_key]["resnet"]["file"], jpeg, list(resnet_classes)
+        )
         print(f"ResNet  py={py_img['label']} mobile={tflite_img['label']}")
         if py_img["label"] != tflite_img["label"]:
             print("  WARN: label mismatch (TFLite quantization may shift borderline cases)")
 
         py_tab = predict_tabular(tabular, phase_api)
-        onnx_tab = _run_onnx(MOBILE / manifest[phase_key]["rf"]["file"], row, classes, phase_key)
+        onnx_tab = _run_onnx(
+            MOBILE / manifest[phase_key]["rf"]["file"], row, list(rf_classes), phase_key
+        )
         print(f"RF      py={py_tab['label']} mobile={onnx_tab['label']}")
         if not _prob_close(py_tab["probabilities"], onnx_tab["probabilities"], args.tolerance):
             print("  WARN: RF probability drift > tolerance")
@@ -176,6 +186,7 @@ def main() -> int:
         tw = manifest["fusion"]["tabular_weight"]
         import numpy as np
 
+        # Both branches are keyed by class NAME here, so the differing raw axes line up.
         iv = np.array([tflite_img["probabilities"][c] for c in classes])
         tv = np.array([onnx_tab["probabilities"][c] for c in classes])
         fused = iw * iv + tw * tv
@@ -184,9 +195,10 @@ def main() -> int:
         print(f"Fusion  py={py_fused['label']} mobile={mob_label}")
         if py_fused["label"] != mob_label:
             print("  WARN: fused label mismatch")
+            ok = False
 
-    print("\n" + ("OK" if ok else "DONE with warnings"))
-    return 0 if ok else 0
+    print("\n" + ("OK" if ok else "FAILED"))
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

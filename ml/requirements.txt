@@ -10,3 +10,22 @@ geopandas==1.0.1
 pyogrio==0.10.0
 shapely==2.0.7
 requests==2.32.3
+
+# Image dataset tooling: prepare_image_dataset.py, dedupe_images.py, relabel_workspace.py,
+# build_eval_set.py, smoke_test_models.py, parity_test_mobile_models.py all import PIL.
+# It was previously an undeclared dependency.
+pillow>=10.0
+
+# HEIC/HEIF decoding. iPhone field photos arrive as .HEIC and Pillow cannot read them without
+# this plugin. Used only by the offline dataset scripts -- NOT imported by backend/ or mobile/,
+# so it never reaches the deployed image or the app bundle.
+pillow-heif>=0.18
+
+# NOTE on virtualenvs: the geo/GIS scripts need geopandas (this file), while the scripts that
+# load models need TensorFlow (backend/requirements.txt). If a script fails on an import, check
+# which venv you are in:
+#   ml/.venv       -> export_mobile_geo.py, generate_synthetic_data.py, train_tabular_rf.py
+#   backend/.venv  -> anything touching Keras/ONNX or the fusion engine (evaluate_on_real.py,
+#                     smoke_test_models.py, export_mobile_models.py, parity_test_mobile_models.py)
+# dedupe_images.py / relabel_workspace.py / build_eval_set.py only need Pillow, so either works
+# once pillow is installed.

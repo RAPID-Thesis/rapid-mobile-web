@@ -1,7 +1,7 @@
 {
   "model_key": "pre",
   "sklearn_version": "1.6.1",
-  "trained_at_utc": "2026-04-16T12:22:05.480861+00:00",
+  "trained_at_utc": "2026-08-16T08:42:08.858586+00:00",
   "source_csv": "data/train_pre.csv",
   "label_classes": [
     "high",
@@ -29,120 +29,124 @@
     "classifier__max_features": "log2",
     "classifier__max_depth": 25
   },
-  "cv_macro_f1": 0.8665308757936767,
-  "test_macro_f1": 0.8486236975189221,
+  "cv_macro_f1": 0.8582322712170795,
+  "test_macro_f1": 0.8631908782109173,
   "top_feature_importances": [
     {
       "feature": "num__year_built",
-      "importance": 0.1164301426340207
-    },
-    {
-      "feature": "cat__material_concrete",
-      "importance": 0.11534577079857179
+      "importance": 0.1115440933773924
     },
     {
       "feature": "num__building_age",
-      "importance": 0.11175900276711592
+      "importance": 0.10736409421101546
     },
     {
-      "feature": "cat__material_wood",
-      "importance": 0.07630490588737693
+      "feature": "cat__structural_system_unreinforced_masonry",
+      "importance": 0.09151531544646452
     },
     {
-      "feature": "cat__structural_system_wood_frame",
-      "importance": 0.061463860640031474
-    },
-    {
-      "feature": "num__elevation_m",
-      "importance": 0.06043547592942861
-    },
-    {
-      "feature": "num__distance_to_fault_km",
-      "importance": 0.051478344699387134
-    },
-    {
-      "feature": "num__slope_deg",
-      "importance": 0.03819919997452376
-    },
-    {
-      "feature": "cat__structural_system_unknown",
-      "importance": 0.035310013287357
+      "feature": "cat__material_concrete",
+      "importance": 0.07228757047797982
     },
     {
       "feature": "cat__structural_system_shear_wall",
-      "importance": 0.03454263118375203
+      "importance": 0.06234960500772628
     },
     {
-      "feature": "cat__material_mixed",
-      "importance": 0.03373014726384462
+      "feature": "cat__material_wood",
+      "importance": 0.06117817646329315
     },
     {
-      "feature": "num__number_of_stories",
-      "importance": 0.032009447237696054
+      "feature": "num__elevation_m",
+      "importance": 0.05978908010177365
     },
     {
-      "feature": "cat__soil_classification_C",
-      "importance": 0.02948788850002909
+      "feature": "num__distance_to_fault_km",
+      "importance": 0.049014595461561596
     },
     {
-      "feature": "cat__building_use_residential",
-      "importance": 0.026303380325554435
+      "feature": "cat__structural_system_wood_frame",
+      "importance": 0.043159003705243365
     },
     {
-      "feature": "num__previous_retrofit_as_int",
-      "importance": 0.02504999687167031
-    },
-    {
-      "feature": "cat__soil_classification_D",
-      "importance": 0.02337455022149484
-    },
-    {
-      "feature": "cat__soil_classification_E",
-      "importance": 0.02101311674549107
-    },
-    {
-      "feature": "cat__foundation_type_shallow",
-      "importance": 0.016273740382538905
+      "feature": "num__slope_deg",
+      "importance": 0.04059452399083928
     },
     {
       "feature": "cat__structural_system_moment_frame",
-      "importance": 0.015094494669148657
+      "importance": 0.03528134426165092
+    },
+    {
+      "feature": "num__number_of_stories",
+      "importance": 0.03096657758877574
+    },
+    {
+      "feature": "cat__material_mixed",
+      "importance": 0.029248010106501868
+    },
+    {
+      "feature": "num__previous_retrofit_as_int",
+      "importance": 0.02552781827962771
+    },
+    {
+      "feature": "cat__building_use_residential",
+      "importance": 0.0213603942381283
+    },
+    {
+      "feature": "cat__soil_classification_C",
+      "importance": 0.019244607649952852
+    },
+    {
+      "feature": "cat__structural_system_unknown",
+      "importance": 0.018554506850458508
+    },
+    {
+      "feature": "cat__soil_classification_D",
+      "importance": 0.01653385823082712
+    },
+    {
+      "feature": "cat__soil_classification_E",
+      "importance": 0.01625399583965319
     },
     {
       "feature": "cat__foundation_type_deep",
-      "importance": 0.014513019433369469
-    },
-    {
-      "feature": "cat__foundation_type_mat",
-      "importance": 0.012714229292200837
-    },
-    {
-      "feature": "cat__foundation_type_unknown",
-      "importance": 0.01062510916807753
+      "importance": 0.013700721535821234
     },
     {
       "feature": "cat__structural_system_braced_frame",
-      "importance": 0.009254056331159574
+      "importance": 0.012843266519587863
+    },
+    {
+      "feature": "cat__foundation_type_shallow",
+      "importance": 0.012830327284854696
+    },
+    {
+      "feature": "cat__foundation_type_mat",
+      "importance": 0.010356610793800484
+    },
+    {
+      "feature": "cat__foundation_type_unknown",
+      "importance": 0.009762136500896912
     },
     {
       "feature": "cat__building_use_institutional",
-      "importance": 0.00874701771047207
+      "importance": 0.008632304085261533
     },
     {
       "feature": "cat__building_use_mixed",
-      "importance": 0.007891907710905668
+      "importance": 0.006735815721685525
     },
     {
       "feature": "cat__building_use_commercial",
-      "importance": 0.005534494435519819
+      "importance": 0.0063519283162336735
     },
     {
       "feature": "cat__building_use_industrial",
-      "importance": 0.004568041512577395
+      "importance": 0.00402942889717657
     },
     {
       "feature": "cat__soil_classification_B",
-      "importance": 0.00254601438668415
+      "importance": 0.00299028905581568
     }
   ]
 }

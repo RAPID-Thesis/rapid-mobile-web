@@ -1,159 +1,210 @@
 """
-Balance and split the raw image dataset for ResNet50 training WITHOUT data leakage.
+Build the train/val split from hand-assigned SEVERITY labels, without leakage.
 
-Leakage-safe pipeline:
-  1. Split ORIGINALS first (80/20 stratified) per class.
-  2. Within the train split only, augment the minority class to match the target.
-  3. Downsample majority classes in each split independently.
-  4. Val set contains ONLY untouched originals — no augmented copies of train images.
+Replaces the earlier version, which derived labels from the source folder name. That made
+each class a different dataset -- `low` was the Mendeley "Negative" split, `moderate` its
+"Positive" split, `high` a separate Roboflow export at another resolution -- so the model
+scored 0.9975 by telling datasets apart and 0.074 on real field photos.
 
-Usage (from ml/):
-  python scripts/prepare_image_dataset.py
+What this version guarantees:
 
-Reads:  data/images/train/{low,moderate,high}/*.jpg  (raw user-provided images)
-Writes: data/images_prepared/train/{low,moderate,high}/*.jpg
-        data/images_prepared/val/{low,moderate,high}/*.jpg
+  1. **Labels come from ml/data/image_labels.csv** (severity, assigned by eye against
+     ml/labeling_rubric.md), not from directory names.
+  2. **Splits are grouped by `group_id`.** Near-duplicate copies of one photo -- Roboflow
+     ships several augmented versions of the same source image -- always land on the same
+     side of the split. A random per-file split silently leaks them across both.
+  3. **The class x pool matrix is printed.** `low` currently comes almost entirely from
+     Pool A (227px lab crops) while `moderate`/`high` come from Pool C (640px photos), so
+     resolution remains a usable shortcut. This is reported every run rather than discovered
+     after training; the countermeasure is the degradation augmentation in train_resnet50.py.
+  4. **junk/skip are excluded** but counted, so nothing disappears silently.
+
+Usage (from repo root, with the backend venv):
+  backend/.venv/Scripts/python.exe ml/scripts/prepare_image_dataset.py
+  backend/.venv/Scripts/python.exe ml/scripts/prepare_image_dataset.py --val-frac 0.25
+
+Reads:  ml/data/image_labels.csv   (from scripts/relabel_workspace.py merge)
+Writes: ml/data/images_prepared/{train,val}/{low,moderate,high}/
+        ml/data/images_prepared/manifest.csv
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
+import csv
 import random
 import shutil
 import sys
+from collections import Counter, defaultdict
 from pathlib import Path
 
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageOps
 
-TRAIN_TARGET_PER_CLASS = 3200
-VAL_FRACTION = 0.20
+try:
+    import pillow_heif
 
+    pillow_heif.register_heif_opener()
+except ImportError:  # pragma: no cover
+    pass
 
-def augment_image(img: Image.Image, rng: random.Random) -> Image.Image:
-    """Apply random augmentations to a PIL image."""
-    if rng.random() < 0.5:
-        img = img.transpose(Image.FLIP_LEFT_RIGHT)
-    angle = rng.uniform(-25, 25)
-    img = img.rotate(angle, resample=Image.BILINEAR, fillcolor=(0, 0, 0))
-    factor = rng.uniform(0.65, 1.45)
-    img = ImageEnhance.Brightness(img).enhance(factor)
-    factor = rng.uniform(0.65, 1.35)
-    img = ImageEnhance.Contrast(img).enhance(factor)
-    if rng.random() < 0.4:
-        img = img.filter(ImageFilter.GaussianBlur(radius=rng.uniform(0.5, 2.0)))
-    factor = rng.uniform(0.7, 1.3)
-    img = ImageEnhance.Color(img).enhance(factor)
-    if rng.random() < 0.2:
-        img = img.filter(ImageFilter.SHARPEN)
-    return img
+ML_ROOT = Path(__file__).resolve().parent.parent
+LABELS_CSV = ML_ROOT / "data" / "image_labels.csv"
+OUT_DIR = ML_ROOT / "data" / "images_prepared"
+
+TRAIN_CLASSES = ["low", "moderate", "high"]
+EXCLUDED = ["junk", "skip"]
 
 
-def stable_hash(path: Path) -> str:
-    return hashlib.md5(str(path.name).encode()).hexdigest()
-
-
-def split_originals(
-    src_dir: Path, val_fraction: float, rng: random.Random
-) -> tuple[list[Path], list[Path]]:
-    """Stratified per-class split of original files (no duplicates across train/val)."""
-    files = sorted(src_dir.glob("*.jpg")) + sorted(src_dir.glob("*.jpeg")) + sorted(src_dir.glob("*.png"))
-    if not files:
-        raise ValueError(f"No images found in {src_dir}")
-    rng.shuffle(files)
-    n_val = max(1, int(len(files) * val_fraction))
-    return files[n_val:], files[:n_val]
-
-
-def populate_split(
-    originals: list[Path],
-    dst_dir: Path,
-    target: int,
-    rng: random.Random,
-    augment: bool,
-) -> int:
-    """
-    Copy originals into dst_dir; if fewer than target AND augment=True, augment to fill.
-    If more than target, downsample. Returns final count.
-    """
-    dst_dir.mkdir(parents=True, exist_ok=True)
-
-    if len(originals) >= target:
-        selected = rng.sample(originals, target)
-        for i, src in enumerate(selected):
-            shutil.copy2(src, dst_dir / f"orig_{i:05d}.jpg")
-        return target
-
-    for i, src in enumerate(originals):
-        shutil.copy2(src, dst_dir / f"orig_{i:05d}.jpg")
-
-    if not augment:
-        return len(originals)
-
-    needed = target - len(originals)
-    print(f"  Augmenting {needed} images from {len(originals)} train originals...", file=sys.stderr)
-    for i in range(needed):
-        src = rng.choice(originals)
-        img = Image.open(src).convert("RGB")
-        img = augment_image(img, rng)
-        img.save(dst_dir / f"aug_{i:05d}.jpg", "JPEG", quality=90)
-
-    return target
+def load_labels() -> list[dict[str, str]]:
+    if not LABELS_CSV.exists():
+        print(f"Missing {LABELS_CSV}.\n"
+              f"  Run: relabel_workspace.py collect-team --pool C\n"
+              f"       relabel_workspace.py merge", file=sys.stderr)
+        sys.exit(1)
+    with LABELS_CSV.open(encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Balance and split image dataset (leakage-safe).")
-    parser.add_argument("--raw-dir", type=Path,
-                        default=Path(__file__).resolve().parent.parent / "data" / "images" / "train")
-    parser.add_argument("--out-dir", type=Path,
-                        default=Path(__file__).resolve().parent.parent / "data" / "images_prepared")
-    parser.add_argument("--train-target", type=int, default=TRAIN_TARGET_PER_CLASS,
-                        help=f"Target train images per class (default {TRAIN_TARGET_PER_CLASS})")
-    parser.add_argument("--val-frac", type=float, default=VAL_FRACTION)
+    parser = argparse.ArgumentParser(description="Group-aware train/val split from severity labels.")
+    parser.add_argument("--val-frac", type=float, default=0.20)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--cap-per-class", type=int, default=None,
+                        help="Cap groups per class in TRAIN (val is left untouched). Use to stop "
+                             "an auto-labeled pool from dominating a class.")
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    rng = random.Random(args.seed)
+    rows = load_labels()
 
-    if args.out_dir.exists():
-        print(f"Removing existing prepared dir: {args.out_dir}", file=sys.stderr)
-        shutil.rmtree(args.out_dir)
-
-    classes = sorted([d.name for d in args.raw_dir.iterdir() if d.is_dir()])
-    if not classes:
-        print(f"No class subdirectories found in {args.raw_dir}", file=sys.stderr)
+    excluded_counts = Counter(r["label"] for r in rows if r["label"] in EXCLUDED)
+    rows = [r for r in rows if r["label"] in TRAIN_CLASSES]
+    if not rows:
+        print("No rows with a trainable label (low/moderate/high).", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Classes: {classes}", file=sys.stderr)
-    print(f"Train target per class: {args.train_target}, val fraction: {args.val_frac}", file=sys.stderr)
-    print("Leakage-safe: originals split first, augmentation applied ONLY to train.\n", file=sys.stderr)
+    # One label per group. A group is one photo plus its near-duplicates, so it must not be
+    # split across train and val, and it cannot hold two different labels.
+    group_label: dict[str, str] = {}
+    group_pool: dict[str, str] = {}
+    group_files: dict[str, list[str]] = defaultdict(list)
+    contradictions: set[str] = set()
+    for r in rows:
+        gid = r["group_id"]
+        if gid in group_label and group_label[gid] != r["label"]:
+            contradictions.add(gid)
+        group_label[gid] = r["label"]
+        group_pool[gid] = r["pool"]
+        group_files[gid].append(r["path"])
 
-    summary: dict[str, dict[str, int]] = {}
+    if contradictions:
+        print(f"{len(contradictions)} group(s) carry more than one label -- fix the labels "
+              f"before preparing the dataset: {sorted(contradictions)[:10]}", file=sys.stderr)
+        sys.exit(1)
 
-    for cls in classes:
-        src = args.raw_dir / cls
-        n_src = len(list(src.glob("*.jpg")))
-        print(f"\n[{cls}] {n_src} source images", file=sys.stderr)
+    # --- Group-aware, class-stratified, pool-stratified split ---
+    rng = random.Random(args.seed)
+    by_class_pool: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for gid, label in group_label.items():
+        by_class_pool[(label, group_pool[gid])].append(gid)
 
-        train_orig, val_orig = split_originals(src, args.val_frac, rng)
-        print(f"  Original split -> train: {len(train_orig)}, val: {len(val_orig)}", file=sys.stderr)
+    train_gids: list[str] = []
+    val_gids: list[str] = []
+    for key, gids in by_class_pool.items():
+        gids = sorted(gids, key=lambda g: int(g))
+        rng.shuffle(gids)
+        # At least one val group per (class, pool) so the val set mirrors the training mix.
+        n_val = max(1, round(len(gids) * args.val_frac)) if len(gids) > 1 else 0
+        val_gids.extend(gids[:n_val])
+        train_gids.extend(gids[n_val:])
 
-        # Val target = whatever originals we have (capped at a reasonable max if class is huge)
-        val_target = min(len(val_orig), 800)
-        val_count = populate_split(
-            val_orig, args.out_dir / "val" / cls, val_target, rng, augment=False
-        )
+    if args.cap_per_class:
+        capped: list[str] = []
+        per_class: dict[str, list[str]] = defaultdict(list)
+        for gid in train_gids:
+            per_class[group_label[gid]].append(gid)
+        for label, gids in per_class.items():
+            if len(gids) > args.cap_per_class:
+                rng.shuffle(gids)
+                print(f"  capping train '{label}': {len(gids)} -> {args.cap_per_class} groups",
+                      file=sys.stderr)
+                gids = gids[:args.cap_per_class]
+            capped.extend(gids)
+        train_gids = capped
 
-        train_count = populate_split(
-            train_orig, args.out_dir / "train" / cls, args.train_target, rng, augment=True
-        )
+    if OUT_DIR.exists():
+        if not args.force:
+            print(f"{OUT_DIR} exists. Pass --force to rebuild.", file=sys.stderr)
+            sys.exit(1)
+        shutil.rmtree(OUT_DIR)
 
-        summary[cls] = {"train": train_count, "val": val_count}
+    # --- Materialize ---
+    manifest: list[list[str]] = []
+    counts: Counter[tuple[str, str]] = Counter()
+    matrix: Counter[tuple[str, str, str]] = Counter()
+    for split, gids in (("train", train_gids), ("val", val_gids)):
+        for cls in TRAIN_CLASSES:
+            (OUT_DIR / split / cls).mkdir(parents=True, exist_ok=True)
+        for gid in gids:
+            label = group_label[gid]
+            pool = group_pool[gid]
+            for i, rel in enumerate(group_files[gid]):
+                src = ML_ROOT / rel
+                if not src.exists():
+                    print(f"  ! missing: {rel}", file=sys.stderr)
+                    continue
+                dst = OUT_DIR / split / label / f"g{int(gid):06d}_{i}.jpg"
+                try:
+                    with Image.open(src) as im:
+                        im = ImageOps.exif_transpose(im).convert("RGB")
+                        im.save(dst, "JPEG", quality=95)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  ! could not copy {rel}: {exc}", file=sys.stderr)
+                    continue
+                counts[(split, label)] += 1
+                matrix[(split, label, pool)] += 1
+                manifest.append([split, label, pool, gid, dst.relative_to(ML_ROOT).as_posix(), rel])
 
-    print("\n=== Final dataset ===", file=sys.stderr)
-    for cls, counts in summary.items():
-        print(f"  {cls}: train={counts['train']}, val={counts['val']}", file=sys.stderr)
-    print(f"\nWritten to: {args.out_dir}", file=sys.stderr)
+    with (OUT_DIR / "manifest.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["split", "label", "pool", "group_id", "path", "source_path"])
+        w.writerows(manifest)
+
+    # --- Report ---
+    print("\n=== Split (files) ===", file=sys.stderr)
+    print(f"{'':<10}{'train':>8}{'val':>8}", file=sys.stderr)
+    for cls in TRAIN_CLASSES:
+        print(f"{cls:<10}{counts[('train', cls)]:>8}{counts[('val', cls)]:>8}", file=sys.stderr)
+    print(f"{'TOTAL':<10}{sum(counts[('train', c)] for c in TRAIN_CLASSES):>8}"
+          f"{sum(counts[('val', c)] for c in TRAIN_CLASSES):>8}", file=sys.stderr)
+
+    print(f"\n  groups: train={len(train_gids)} val={len(val_gids)} "
+          f"(no group appears in both)", file=sys.stderr)
+    if excluded_counts:
+        print(f"  excluded: {dict(excluded_counts)}", file=sys.stderr)
+
+    print("\n=== class x source pool (train) ===", file=sys.stderr)
+    pools = sorted({p for (_s, _c, p) in matrix})
+    print(f"{'':<10}" + "".join(f"{p:>8}" for p in pools), file=sys.stderr)
+    single_pool: list[str] = []
+    for cls in TRAIN_CLASSES:
+        cells = [matrix[("train", cls, p)] for p in pools]
+        print(f"{cls:<10}" + "".join(f"{v:>8}" for v in cells), file=sys.stderr)
+        nonzero = [p for p, v in zip(pools, cells, strict=True) if v]
+        if len(nonzero) == 1:
+            single_pool.append(f"{cls}->{nonzero[0]}")
+
+    if single_pool:
+        print(f"\n  CONFOUND: {', '.join(single_pool)} draw from a single source pool.",
+              file=sys.stderr)
+        print("  Those classes remain separable by resolution/sharpness alone. train_resnet50.py",
+              file=sys.stderr)
+        print("  randomizes scale and JPEG quality to suppress it -- verify with --shortcut-probe",
+              file=sys.stderr)
+        print("  and treat the real measurement as evaluate_on_real.py, not the val split.",
+              file=sys.stderr)
+
+    print(f"\nWrote {OUT_DIR}", file=sys.stderr)
 
 
 if __name__ == "__main__":

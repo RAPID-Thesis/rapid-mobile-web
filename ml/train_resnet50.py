@@ -41,8 +41,38 @@ LABEL_SMOOTHING = 0.10
 HEAD_DROPOUT_1 = 0.5
 HEAD_DROPOUT_2 = 0.4
 
+# Above this, a validation score on this dataset means the model found the source-pool
+# shortcut rather than learning severity. Training aborts instead of saving.
+SUSPICIOUS_F1 = 0.98
 
-def load_datasets(data_dir: Path, batch_size: int = BATCH_SIZE):
+
+def _degrade(image, label, min_scale: float = 0.25, jpeg_min: int = 25):
+    """Randomize effective resolution and JPEG quality on a single training image.
+
+    This is the countermeasure for the dataset's structural confound: `low` comes almost
+    entirely from 227px lab crops (pool A) while `moderate`/`high` come from 640px photos
+    (pool C), so native sharpness alone separates the classes. Randomly downscaling and
+    re-encoding destroys that cue, forcing the network onto the damage itself.
+
+    Without it the model relearns exactly the shortcut that produced 0.9975 validation F1
+    and 0.074 accuracy on real field photos.
+    """
+    scale = tf.random.uniform([], min_scale, 1.0)
+    side = tf.maximum(tf.cast(tf.round(IMG_SIZE[0] * scale), tf.int32), 32)
+    small = tf.image.resize(image, (side, side), method="area")
+    back = tf.image.resize(small, IMG_SIZE, method="bilinear")
+
+    encoded = tf.cast(tf.clip_by_value(back, 0.0, 255.0), tf.uint8)
+    encoded = tf.image.random_jpeg_quality(encoded, jpeg_min, 95)
+    return tf.cast(encoded, tf.float32), label
+
+
+def load_datasets(
+    data_dir: Path,
+    batch_size: int = BATCH_SIZE,
+    degrade: bool = True,
+    probe: bool = False,
+):
     train_ds = tf.keras.utils.image_dataset_from_directory(
         data_dir / "train",
         image_size=IMG_SIZE,
@@ -62,6 +92,23 @@ def load_datasets(data_dir: Path, batch_size: int = BATCH_SIZE):
     print(f"Classes (alphabetical): {class_names}")
     print(f"Train batches: {tf.data.experimental.cardinality(train_ds).numpy()}")
     print(f"Val batches: {tf.data.experimental.cardinality(val_ds).numpy()}")
+
+    if probe:
+        # Shortcut probe: crush every image to 16x16 before restoring it to 224. Semantic
+        # content is gone; only global statistics (resolution signature, colour cast, overall
+        # contrast) survive. Accuracy well above chance here means the model can still tell the
+        # classes apart WITHOUT seeing the damage -- i.e. the shortcut is intact.
+        print("\n  [shortcut probe] training on 16x16-crushed images; "
+              "high accuracy here means the shortcut survives.")
+        crush = lambda x, y: _degrade(x, y, min_scale=16 / IMG_SIZE[0], jpeg_min=15)  # noqa: E731
+        train_ds = train_ds.unbatch().map(crush, num_parallel_calls=tf.data.AUTOTUNE).batch(batch_size)
+        val_ds = val_ds.unbatch().map(crush, num_parallel_calls=tf.data.AUTOTUNE).batch(batch_size)
+    elif degrade:
+        train_ds = (
+            train_ds.unbatch()
+            .map(_degrade, num_parallel_calls=tf.data.AUTOTUNE)
+            .batch(batch_size)
+        )
 
     train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
     val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
@@ -148,12 +195,19 @@ def evaluate_model(model, val_ds, class_names: list[str]) -> dict:
     }
 
 
-def train_one(mode: str, data_dir: Path) -> None:
+def train_one(
+    mode: str,
+    data_dir: Path,
+    *,
+    degrade: bool = True,
+    probe: bool = False,
+    allow_suspicious: bool = False,
+) -> None:
     print(f"\n{'='*60}")
     print(f"  Training ResNet50 -- {mode}-EQ model")
     print(f"{'='*60}\n")
 
-    train_ds, val_ds, class_names = load_datasets(data_dir)
+    train_ds, val_ds, class_names = load_datasets(data_dir, degrade=degrade, probe=probe)
     num_classes = len(class_names)
     class_weights = compute_class_weights(train_ds, class_names)
 
@@ -220,10 +274,30 @@ def train_one(mode: str, data_dir: Path) -> None:
     # --- Evaluate ---
     metrics = evaluate_model(model, val_ds, class_names)
 
-    # Sanity check: warn on suspiciously high accuracy
-    if metrics["macro_f1"] > 0.98:
-        print("\n  WARNING: val F1 > 0.98 is suspiciously high. Check for data leakage.",
+    # The previous model shipped with val macro F1 = 0.9975 and scored 0.074 on real photos.
+    # That warning was printed and ignored, so it is now a hard stop.
+    if metrics["macro_f1"] > SUSPICIOUS_F1 and not allow_suspicious:
+        print(f"\n  ABORT: val macro F1 = {metrics['macro_f1']:.4f} exceeds {SUSPICIOUS_F1}.",
               file=sys.stderr)
+        print("  On this dataset that indicates the model is separating source pools rather", file=sys.stderr)
+        print("  than damage severity -- the exact failure that produced the previous model.", file=sys.stderr)
+        print("  Investigate before shipping, or pass --allow-suspicious if you have verified", file=sys.stderr)
+        print("  it with --shortcut-probe and evaluate_on_real.py.", file=sys.stderr)
+        sys.exit(2)
+
+    if probe:
+        chance = 1.0 / len(class_names)
+        print(f"\n  [shortcut probe] macro F1 on semantically destroyed images: "
+              f"{metrics['macro_f1']:.3f}  (chance ~= {chance:.2f})")
+        if metrics["macro_f1"] > chance + 0.20:
+            print("  The classes are still separable without visible damage -- the shortcut "
+                  "SURVIVES. Rebalance the class x pool matrix before trusting any score.",
+                  file=sys.stderr)
+        else:
+            print("  Near chance, as intended: the classes are not separable from global "
+                  "image statistics alone.")
+        print("  (probe run -- no model saved)")
+        return
 
     # --- Save ---
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -260,6 +334,15 @@ def main() -> None:
     parser.add_argument("--mode", choices=["pre", "post", "both"], default="both")
     parser.add_argument("--data-dir", type=Path,
                         default=ML_ROOT / "data" / "images_prepared")
+    parser.add_argument("--no-degrade", action="store_true",
+                        help="Disable scale/quality randomization. Only for ablation -- without "
+                             "it the source-pool shortcut is fully available.")
+    parser.add_argument("--shortcut-probe", action="store_true",
+                        help="Diagnostic: train on 16x16-crushed images. Accuracy near chance "
+                             "(~0.33) means the classes are NOT separable without seeing the "
+                             "damage. Does not save a model.")
+    parser.add_argument("--allow-suspicious", action="store_true",
+                        help=f"Save even if val macro F1 exceeds {SUSPICIOUS_F1}.")
     args = parser.parse_args()
 
     if not (args.data_dir / "train").is_dir():
@@ -269,7 +352,12 @@ def main() -> None:
 
     modes = ["pre", "post"] if args.mode == "both" else [args.mode]
     for mode in modes:
-        train_one(mode, args.data_dir)
+        train_one(
+            mode, args.data_dir,
+            degrade=not args.no_degrade,
+            probe=args.shortcut_probe,
+            allow_suspicious=args.allow_suspicious or args.shortcut_probe,
+        )
 
 
 if __name__ == "__main__":

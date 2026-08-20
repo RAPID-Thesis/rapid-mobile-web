@@ -17,7 +17,11 @@ const MATERIAL_MAP: Record<string, string> = {
 const STRUCTURAL_SYSTEM_MAP: Record<string, string> = {
   'moment resisting frame': 'moment_frame',
   'shear wall system': 'shear_wall',
-  'unreinforced masonry': 'unknown',
+  // Must match _STRUCTURAL_SYSTEM_MAP in backend/app/services/ml_fusion_engine.py.
+  // Previously collapsed to 'unknown', discarding the strongest vulnerability signal an
+  // inspector can record; the category now exists in the tabular training data.
+  'unreinforced masonry': 'unreinforced_masonry',
+  unreinforced_masonry: 'unreinforced_masonry',
   'braced frame': 'braced_frame',
   moment_frame: 'moment_frame',
   shear_wall: 'shear_wall',

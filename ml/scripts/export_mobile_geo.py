@@ -29,6 +29,11 @@ LAT_MIN, LAT_MAX = 14.72, 14.92
 LON_MIN, LON_MAX = 120.98, 121.12
 GRID_STEP = 0.01  # ~1.1 km
 
+# Fault segments are kept if within this many degrees of the study bounds (~55 km). The
+# vulnerability score saturates at 40 km, so this preserves exact distances for every point
+# in the area while keeping the bundle small.
+FAULT_MARGIN_DEG = 0.5
+
 SRTM_LAT, SRTM_LON = 14, 121
 SRTM_SAMPLES = 3601
 
@@ -86,6 +91,18 @@ def _load_dem():
     return dem, slope
 
 
+def _intersects_bounds(segment: list[list[float]], margin: float) -> bool:
+    """True if the segment's bounding box overlaps the study area expanded by ``margin`` degrees."""
+    lons = [p[0] for p in segment]
+    lats = [p[1] for p in segment]
+    return not (
+        max(lons) < LON_MIN - margin
+        or min(lons) > LON_MAX + margin
+        or max(lats) < LAT_MIN - margin
+        or min(lats) > LAT_MAX + margin
+    )
+
+
 def _load_fault_segments() -> list[list[list[float]]]:
     fault_shp = (
         ML_ROOT
@@ -116,7 +133,16 @@ def _load_fault_segments() -> list[list[list[float]]]:
             elif geom.geom_type == "MultiLineString":
                 for part in geom.geoms:
                     segments.append([[float(x), float(y)] for x, y in part.coords])
-        return segments[:200]  # cap size
+
+        # Keep the segments that can actually be nearest to a point in the study area rather
+        # than an arbitrary first-N slice. The vulnerability score saturates at 40 km, so a
+        # ~0.5 deg (~55 km) margin around the bounds is more than sufficient and still yields
+        # distances identical to using the full shapefile.
+        total = len(segments)
+        segments = [s for s in segments if _intersects_bounds(s, FAULT_MARGIN_DEG)]
+        print(f"Fault segments: kept {len(segments)} of {total} "
+              f"(within {FAULT_MARGIN_DEG} deg of study bounds)", file=sys.stderr)
+        return segments
     except Exception as exc:
         print(f"Fault shapefile load failed ({exc}); using fallback polyline.", file=sys.stderr)
         return [[[120.99, 14.75], [121.05, 14.82], [121.08, 14.88]]]
@@ -199,7 +225,7 @@ def main() -> int:
     if args.copy_to_mobile:
         MOBILE_GEO.mkdir(parents=True, exist_ok=True)
         shutil.copy2(out_path, MOBILE_GEO / "sjdm_geo.json")
-        print(f"Copied → {MOBILE_GEO / 'sjdm_geo.json'}")
+        print(f"Copied -> {MOBILE_GEO / 'sjdm_geo.json'}")
 
     return 0
 
