@@ -38,6 +38,16 @@ ml/data/gis/srtm/
 # Prepared image dataset (derived from originals)
 ml/data/images_prepared/
 
+# Held-out real-image test set: raw drop + staged copy (hundreds of MB of phone photos)
+ml/data/image_eval/
+ml/data/images_eval/
+
+# Labeling workspaces (copies of images being sorted by hand)
+ml/data/relabel/
+# ...but the labels themselves are the valuable human work -- keep them tracked.
+!ml/data/labels_pool*.csv
+!ml/data/image_labels.csv
+
 # Raw training images (user-provided, not redistributable)
 ml/data/images/
 
@@ -45,3 +55,11 @@ ml/data/images/
 ml/data/train_pre.csv
 ml/data/train_post.csv
 ml/data/generation_meta.json
+
+# Source GIS archive — already extracted into ml/artifacts/mobile/sjdm_geo.json.
+# Committing the zip would bloat every clone forever for no benefit.
+PHIVOLCS FAULT LINES-*.zip
+
+# Stray empty Cursor rule stubs created outside .cursor/
+backend/cursor/
+ml/cursor/
