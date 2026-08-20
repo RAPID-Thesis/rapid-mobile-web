@@ -3,15 +3,34 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { openPrintableAssessmentReport } from '../lib/assessmentReport';
 import type { Assessment, Building } from '../types';
+import {
+  Button,
+  Card,
+  ClassificationBadge,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  PhaseBadge,
+  SkeletonRows,
+} from '../components/ui';
+import { ReportsIcon } from '../components/ui/icons';
 
 export default function ReportsPage() {
   const navigate = useNavigate();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
+      setLoading(true);
+      setError(null);
+
+      // Distinct from useAssessmentData: this view is scoped to reviewed rows.
       const [aRes, bRes] = await Promise.all([
         supabase
           .from('assessments')
@@ -20,118 +39,134 @@ export default function ReportsPage() {
           .order('created_at', { ascending: false }),
         supabase.from('buildings').select('*'),
       ]);
-      setAssessments((aRes.data as Assessment[]) ?? []);
-      setBuildings((bRes.data as Building[]) ?? []);
+      if (cancelled) return;
+
+      const failure = aRes.error ?? bRes.error;
+      if (failure) {
+        setError(failure.message);
+      } else {
+        setAssessments((aRes.data as Assessment[]) ?? []);
+        setBuildings((bRes.data as Building[]) ?? []);
+      }
       setLoading(false);
     }
-    load();
-  }, []);
 
-  function getClassBadge(label: string) {
-    const lower = label.toLowerCase();
-    if (lower === 'unsafe' || lower === 'high') return 'bg-red-100 text-red-700';
-    if (lower === 'restricted' || lower === 'moderate') return 'bg-amber-100 text-amber-700';
-    return 'bg-green-100 text-green-700';
-  }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [nonce]);
 
   async function handlePdf(assessment: Assessment, building: Building | undefined) {
     openPrintableAssessmentReport(assessment, building ?? null);
     if (assessment.status === 'reviewed') {
       await supabase.from('assessments').update({ status: 'report-generated' }).eq('id', assessment.id);
       setAssessments((prev) =>
-        prev.map((a) => (a.id === assessment.id ? { ...a, status: 'report-generated' as const } : a))
+        prev.map((a) => (a.id === assessment.id ? { ...a, status: 'report-generated' as const } : a)),
       );
     }
   }
 
-  if (loading) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
+      <>
+        <PageHeader title="Reports" />
+        <ErrorState message={error} onRetry={() => setNonce((n) => n + 1)} />
+      </>
     );
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-black text-slate-800">Reports</h2>
-        <span className="text-sm text-slate-500">{assessments.length} ready for PDF</span>
-      </div>
+    <>
+      <PageHeader
+        title="Reports"
+        description={
+          loading
+            ? 'Loading…'
+            : `${assessments.length} reviewed assessment${assessments.length === 1 ? '' : 's'} ready to issue`
+        }
+      />
 
-      <p className="text-sm text-slate-600 mb-4">
-        Engineer-reviewed assessments can be exported as PDF via your browser (Print → Save as PDF). First export marks the row as
-        &quot;report generated&quot; for workflow tracking.
-      </p>
+      <Card className="mb-3">
+        <p className="px-4 py-3 text-xs text-ink-muted">
+          Reviewed assessments export as a printable FEMA P-154–style record. Use your browser's
+          print dialog and choose <span className="font-medium text-ink">Save as PDF</span>. The
+          first export marks the record as issued.
+        </p>
+      </Card>
 
-      <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-xs text-slate-500 uppercase tracking-wider bg-slate-50">
-              <th className="px-4 py-3">Building</th>
-              <th className="px-4 py-3">Phase</th>
-              <th className="px-4 py-3">Classification</th>
-              <th className="px-4 py-3">Reviewed</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {assessments.map((a) => {
-              const building = buildings.find((b) => b.id === a.building_id);
-              const label = a.override_classification ?? a.ai_fused_label ?? 'N/A';
-              const isGenerated = a.status === 'report-generated';
-
-              return (
-                <tr key={a.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <p className="font-semibold text-sm text-slate-800">{building?.building_code ?? '—'}</p>
-                    <p className="text-xs text-slate-500">{building?.address}</p>
-                  </td>
-                  <td className="px-4 py-3 text-sm">{a.phase === 'pre-earthquake' ? 'Pre-EQ' : 'Post-EQ'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${getClassBadge(label)}`}>
-                      {label.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    {a.reviewed_at ? new Date(a.reviewed_at).toLocaleDateString() : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{new Date(a.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handlePdf(a, building)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
-                          isGenerated
-                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                      >
-                        {isGenerated ? 'Download PDF again' : 'Generate PDF'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/assessments/${a.id}`)}
-                        className="px-3 py-1.5 border border-slate-300 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50"
-                      >
-                        Detail
-                      </button>
-                    </div>
-                  </td>
+      <Card className="overflow-hidden">
+        {loading ? (
+          <SkeletonRows rows={6} />
+        ) : assessments.length === 0 ? (
+          <EmptyState
+            icon={<ReportsIcon className="h-8 w-8" />}
+            title="No reports ready"
+            description="A report becomes available once an engineer has reviewed the assessment."
+            action={
+              <Button size="sm" variant="secondary" onClick={() => navigate('/assessments?status=pending-review')}>
+                View assessments awaiting review
+              </Button>
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <caption className="sr-only">Reviewed assessments available as reports</caption>
+              <thead>
+                <tr className="border-b border-line bg-surface-raised text-left text-2xs uppercase tracking-wider text-ink-subtle">
+                  <th scope="col" className="px-4 py-2 font-medium">Building</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Phase</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Final classification</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Reviewed</th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">Actions</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {assessments.length === 0 && (
-          <div className="text-center py-12 text-slate-400">
-            <p className="text-lg font-semibold mb-1">No reports available</p>
-            <p className="text-sm">Reports appear after an engineer completes a review on an assessment.</p>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {assessments.map((a) => {
+                  const building = buildings.find((b) => b.id === a.building_id);
+                  const label = a.override_classification ?? a.ai_fused_label;
+                  const issued = a.status === 'report-generated';
+
+                  return (
+                    <tr key={a.id} className="transition-colors hover:bg-surface-raised">
+                      <td className="px-4 py-2.5">
+                        <p className="font-medium text-ink">{building?.building_code ?? '—'}</p>
+                        <p className="max-w-[240px] truncate text-2xs text-ink-subtle">
+                          {building?.barangay ?? building?.address}
+                        </p>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <PhaseBadge phase={a.phase} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <ClassificationBadge label={label} size="sm" />
+                      </td>
+                      <td className="tabular px-4 py-2.5 text-xs text-ink-muted">
+                        {a.reviewed_at ? new Date(a.reviewed_at).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant={issued ? 'secondary' : 'primary'}
+                            onClick={() => void handlePdf(a, building)}
+                          >
+                            {issued ? 'Print again' : 'Generate report'}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => navigate(`/assessments/${a.id}`)}>
+                            Open
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
-    </div>
+      </Card>
+    </>
   );
 }

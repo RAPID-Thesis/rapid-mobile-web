@@ -1,137 +1,237 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { formatPercent } from '../lib/formatPercent';
-import type { Assessment, Building } from '../types';
+import { cn } from '../lib/cn';
+import {
+  isRestricted,
+  isUnsafe,
+  triageCounts,
+  useAssessmentData,
+} from '../lib/useAssessmentData';
+import {
+  Card,
+  CardHeader,
+  ClassificationBadge,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  SeverityDot,
+  SkeletonCards,
+  SkeletonRows,
+  StatusBadge,
+} from '../components/ui';
+import { InboxIcon } from '../components/ui/icons';
 
-function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
+/**
+ * Triage tile.
+ *
+ * Replaces the previous four emoji stat cards. Those weighted every number
+ * equally — "Total Assessments" looked exactly as urgent as "High Risk" — and
+ * an emoji at 20% opacity is decoration, not information. Here the count that
+ * demands action is the loud one, and each tile is a link into the filtered
+ * worklist rather than a dead readout.
+ */
+function TriageTile({
+  label,
+  meaning,
+  count,
+  tone,
+  to,
+}: {
+  label: string;
+  meaning: string;
+  count: number;
+  tone: 'unsafe' | 'restricted' | 'review' | 'neutral';
+  to: string;
+}) {
+  const accent = {
+    unsafe: 'text-unsafe',
+    restricted: 'text-restricted',
+    review: 'text-brand-700',
+    neutral: 'text-ink',
+  }[tone];
+
+  const rule = {
+    unsafe: 'bg-unsafe',
+    restricted: 'bg-restricted',
+    review: 'bg-brand-700',
+    neutral: 'bg-line-strong',
+  }[tone];
+
   return (
-    <div className={`bg-white rounded-xl p-6 border border-slate-200 border-l-4 shadow-sm ${color}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-500 font-medium">{label}</p>
-          <p className="text-3xl font-black text-slate-800 mt-1">{value}</p>
-        </div>
-        <span className="text-3xl opacity-20">{icon}</span>
-      </div>
-    </div>
+    <Link
+      to={to}
+      className="group relative flex items-baseline gap-3 overflow-hidden rounded-card border border-line bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised"
+    >
+      <span className={cn('absolute inset-y-0 left-0 w-1', rule)} aria-hidden="true" />
+      <span className={cn('tabular text-2xl font-semibold tracking-tight', accent)}>{count}</span>
+      <span className="min-w-0">
+        <span className="block text-xs font-medium text-ink">{label}</span>
+        <span className="block truncate text-2xs text-ink-subtle">{meaning}</span>
+      </span>
+    </Link>
   );
 }
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const [assessments, setAssessments] = useState<Assessment[]>([]);
-  const [buildings, setBuildings] = useState<Building[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { assessments, buildingById, loading, error, reload } = useAssessmentData();
 
-  useEffect(() => {
-    async function load() {
-      const [aRes, bRes] = await Promise.all([
-        supabase.from('assessments').select('*').order('created_at', { ascending: false }),
-        supabase.from('buildings').select('*'),
-      ]);
-      setAssessments((aRes.data as Assessment[]) ?? []);
-      setBuildings((bRes.data as Building[]) ?? []);
-      setLoading(false);
-    }
-    load();
-  }, []);
+  const counts = useMemo(() => triageCounts(assessments), [assessments]);
 
-  const total = assessments.length;
-  const pendingReview = assessments.filter(a => a.status === 'pending-review').length;
-  const highRisk = assessments.filter(a => {
-    const label = a.ai_fused_label;
-    return label === 'high' || label === 'UNSAFE';
-  }).length;
-  const reviewed = assessments.filter(a => a.status === 'reviewed' || a.status === 'report-generated').length;
-  const recent = assessments.slice(0, 5);
+  // Most urgent first, then most recent — the queue an engineer should work.
+  const priority = useMemo(() => {
+    const rank = (a: (typeof assessments)[number]) =>
+      isUnsafe(a.ai_fused_label) ? 0 : isRestricted(a.ai_fused_label) ? 1 : 2;
+    return [...assessments]
+      .filter((a) => a.status === 'pending-review' || isUnsafe(a.ai_fused_label))
+      .sort((a, b) => rank(a) - rank(b) || b.created_at.localeCompare(a.created_at))
+      .slice(0, 8);
+  }, [assessments]);
 
-  function getClassBadge(label: string) {
-    const lower = label.toLowerCase();
-    if (lower === 'unsafe' || lower === 'high') return 'bg-red-100 text-red-700';
-    if (lower === 'restricted' || lower === 'moderate') return 'bg-amber-100 text-amber-700';
-    return 'bg-green-100 text-green-700';
-  }
-
-  if (loading) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
+      <>
+        <PageHeader title="Dashboard" />
+        <ErrorState
+          title="Could not load assessments"
+          message={error}
+          onRetry={reload}
+        />
+      </>
     );
   }
 
   return (
-    <div>
-      <h2 className="text-2xl font-black text-slate-800">Dashboard</h2>
-      <p className="text-sm text-slate-500 mb-6">Operational view for FEMA P-154 and ATC-20 inspections.</p>
+    <>
+      <PageHeader
+        title="Dashboard"
+        description="Structural screening for San Jose del Monte, Bulacan."
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Total Assessments" value={total} color="border-blue-500" icon="📋" />
-        <StatCard label="Pending Review" value={pendingReview} color="border-amber-500" icon="⏳" />
-        <StatCard label="High Risk / Unsafe" value={highRisk} color="border-red-500" icon="⚠️" />
-        <StatCard label="Reviewed" value={reviewed} color="border-green-500" icon="✓" />
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="p-4 border-b border-slate-200">
-          <h3 className="font-bold text-slate-800">Recent Assessments</h3>
+      {loading ? (
+        <SkeletonCards count={4} className="mb-6 sm:grid-cols-2 lg:grid-cols-4" />
+      ) : (
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <TriageTile
+            label="Unsafe"
+            meaning="Do not enter"
+            count={counts.unsafe}
+            tone="unsafe"
+            to="/assessments?class=unsafe"
+          />
+          <TriageTile
+            label="Restricted"
+            meaning="Limited entry"
+            count={counts.restricted}
+            tone="restricted"
+            to="/assessments?class=restricted"
+          />
+          <TriageTile
+            label="Awaiting review"
+            meaning="Needs an engineer"
+            count={counts.awaitingReview}
+            tone="review"
+            to="/assessments?status=pending-review"
+          />
+          <TriageTile
+            label="Total recorded"
+            meaning={`${counts.reviewed} reviewed`}
+            count={counts.total}
+            tone="neutral"
+            to="/assessments"
+          />
         </div>
-        {recent.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <p className="text-lg font-semibold mb-1">No assessments yet</p>
-            <p className="text-sm">Assessments submitted from the mobile app will appear here.</p>
-          </div>
+      )}
+
+      <Card>
+        <CardHeader
+          title="Needs attention"
+          description="Unsafe classifications and anything still awaiting engineer review."
+          actions={
+            <Link to="/assessments" className="text-xs font-medium text-brand-700 hover:underline">
+              View all
+            </Link>
+          }
+        />
+
+        {loading ? (
+          <SkeletonRows rows={5} />
+        ) : priority.length === 0 ? (
+          <EmptyState
+            icon={<InboxIcon className="h-8 w-8" />}
+            title={counts.total === 0 ? 'No assessments yet' : 'Nothing needs attention'}
+            description={
+              counts.total === 0
+                ? 'Assessments submitted from the mobile app will appear here once they sync.'
+                : 'Every assessment has been reviewed and none are classified unsafe.'
+            }
+          />
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="text-left text-xs text-slate-500 uppercase tracking-wider">
-                <th className="px-4 py-3">Building</th>
-                <th className="px-4 py-3">Phase</th>
-                <th className="px-4 py-3">Classification</th>
-                <th className="px-4 py-3">Priority</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recent.map(a => {
-                const building = buildings.find(b => b.id === a.building_id);
-                const label = a.ai_fused_label ?? 'Pending';
-                return (
-                  <tr
-                    key={a.id}
-                    className="hover:bg-slate-50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/assessments/${a.id}`)}
-                  >
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-sm text-slate-800">{building?.building_code ?? '—'}</p>
-                      <p className="text-xs text-slate-500 truncate max-w-[200px]">{building?.address}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-medium">{a.phase === 'pre-earthquake' ? 'Pre-EQ' : 'Post-EQ'}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${getClassBadge(label)}`}>
-                        {label.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-sm font-bold text-slate-700">{formatPercent(a.priority_score, 0)}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-slate-600">{a.status.replace(/-/g, ' ')}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">
-                      {new Date(a.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <caption className="sr-only">Assessments needing attention</caption>
+              <thead>
+                <tr className="border-b border-line text-left text-2xs uppercase tracking-wider text-ink-subtle">
+                  <th scope="col" className="px-4 py-2 font-medium">Building</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Phase</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Classification</th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">Priority</th>
+                  <th scope="col" className="px-4 py-2 font-medium">Status</th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">Recorded</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {priority.map((a) => {
+                  const building = buildingById.get(a.building_id);
+                  return (
+                    <tr
+                      key={a.id}
+                      tabIndex={0}
+                      role="link"
+                      onClick={() => navigate(`/assessments/${a.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigate(`/assessments/${a.id}`);
+                        }
+                      }}
+                      className="cursor-pointer transition-colors hover:bg-surface-raised focus:bg-surface-raised"
+                    >
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <SeverityDot label={a.ai_fused_label} />
+                          <div className="min-w-0">
+                            <p className="font-medium text-ink">{building?.building_code ?? '—'}</p>
+                            <p className="truncate text-2xs text-ink-subtle">
+                              {building?.barangay ?? building?.address ?? 'Location not recorded'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-ink-muted">
+                        {a.phase === 'pre-earthquake' ? 'Pre-quake' : 'Post-quake'}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <ClassificationBadge label={a.ai_fused_label} size="sm" />
+                      </td>
+                      <td className="tabular px-4 py-2.5 text-right text-xs font-medium text-ink-muted">
+                        {formatPercent(a.priority_score, 0)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <StatusBadge status={a.status} />
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-2xs text-ink-subtle">
+                        {new Date(a.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
-    </div>
+      </Card>
+    </>
   );
 }

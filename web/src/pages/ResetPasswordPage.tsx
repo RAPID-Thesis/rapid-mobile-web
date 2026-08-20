@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { APP_NAME } from '../lib/branding';
+import { AuthLayout } from '../components/layout/AuthLayout';
+import { Alert, Button, Field, Input, Skeleton } from '../components/ui';
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -93,7 +94,9 @@ export default function ResetPasswordPage() {
       });
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : 'Could not update password. Try again or request a new link.';
+        err instanceof Error
+          ? err.message
+          : 'Could not update password. Try again or request a new link.';
       setError(message);
     } finally {
       setSubmitting(false);
@@ -102,93 +105,83 @@ export default function ResetPasswordPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
+      <AuthLayout title="Checking your link" description="One moment.">
+        <div className="space-y-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      </AuthLayout>
     );
   }
 
   if (!sessionReady) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
-          <h2 className="text-xl font-bold text-slate-800 mb-3">Link problem</h2>
-          <p className="text-sm text-slate-600 mb-6">{initError}</p>
-          <Link
-            to="/forgot-password"
-            className="inline-block w-full text-center h-12 leading-[3rem] bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700"
-          >
-            Request a new link
+      <AuthLayout
+        title="This link isn't valid"
+        footer={
+          <Link to="/login" className="font-medium text-brand-700 hover:underline">
+            Back to sign in
           </Link>
-          <p className="text-center mt-4">
-            <Link to="/login" className="text-sm font-semibold text-blue-600 hover:underline">
-              Back to sign in
-            </Link>
-          </p>
+        }
+      >
+        <div className="space-y-4">
+          <Alert tone="danger">{initError}</Alert>
+          <Link to="/forgot-password" className="block">
+            <Button variant="primary" fullWidth>
+              Request a new link
+            </Button>
+          </Link>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500 text-white text-3xl font-black mb-4">
-            R
-          </div>
-          <h1 className="text-3xl font-black text-white tracking-wider">{APP_NAME}</h1>
-          <p className="text-blue-300 text-sm mt-1">Choose a new password</p>
-        </div>
+    <AuthLayout
+      title="Choose a new password"
+      description="You'll be signed out and asked to sign in with the new password."
+      footer={
+        <Link to="/login" className="font-medium text-brand-700 hover:underline">
+          Back to sign in
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        {error && <Alert tone="danger">{error}</Alert>}
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-8">
-          <h2 className="text-xl font-bold text-slate-800 mb-6">Set new password</h2>
-
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
-          )}
-
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-slate-700 mb-1">New password</label>
-            <input
+        <Field label="New password" required hint="At least 8 characters.">
+          {(props) => (
+            <Input
+              {...props}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-12 px-4 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="At least 8 characters"
               autoComplete="new-password"
+              invalid={Boolean(error)}
+              autoFocus
             />
-          </div>
+          )}
+        </Field>
 
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Confirm password
-            </label>
-            <input
+        <Field label="Confirm new password" required>
+          {(props) => (
+            <Input
+              {...props}
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full h-12 px-4 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Repeat password"
               autoComplete="new-password"
+              invalid={Boolean(error)}
             />
-          </div>
+          )}
+        </Field>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full h-12 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold rounded-lg transition-colors"
-          >
-            {submitting ? 'Saving…' : 'Update password'}
-          </button>
-
-          <p className="text-center text-sm text-slate-600 mt-6">
-            <Link to="/login" className="font-semibold text-blue-600 hover:underline">
-              Cancel and return to sign in
-            </Link>
-          </p>
-        </form>
-      </div>
-    </div>
+        <Button type="submit" variant="primary" fullWidth loading={submitting}>
+          {submitting ? 'Updating…' : 'Update password'}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }

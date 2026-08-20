@@ -1,18 +1,137 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   RADAR design tokens
+   ----------------------------------------------------------------------------
+   One source of truth for the portal's visual language. Mirrors
+   mobile/constants/theme.ts so the two surfaces stay in step.
+
+   Two rules that govern this palette:
+
+   1. Blue is the ONLY brand colour. Green / amber / red are reserved for the
+      ATC-20 safety classification (SAFE / RESTRICTED / UNSAFE) and must never
+      be used decoratively. In this product colour is data: it tells an
+      inspector whether a building can be entered.
+
+   2. Every value used for text clears WCAG AA (4.5:1) on white. The previous
+      palette did not — restricted #F59E0B measured 2.15:1, safe #16A34A
+      3.30:1, and muted #94A3B8 2.56:1.
+   ========================================================================= */
+
+@theme {
+  /* -- Neutrals ----------------------------------------------------------- */
+  --color-canvas: #f1f5f9;        /* app background */
+  --color-surface: #ffffff;       /* cards, panels, table rows */
+  --color-surface-raised: #f8fafc;/* subtle fills, table headers, hovers */
+
+  --color-ink: #0f172a;           /* primary text            — 17.85:1 */
+  --color-ink-muted: #475569;     /* secondary text          —  7.44:1 */
+  --color-ink-subtle: #64748b;    /* tertiary / meta         —  4.76:1 */
+
+  --color-line: #e2e8f0;          /* hairline borders */
+  --color-line-strong: #cbd5e1;   /* emphasised borders, dividers */
+
+  /* -- Brand (semi-dark blue) --------------------------------------------- */
+  --color-brand-50: #f4f8fd;
+  --color-brand-100: #e8f1fc;
+  --color-brand-200: #c9def7;
+  --color-brand-500: #2e6abf;
+  --color-brand-600: #2563a8;
+  --color-brand-700: #1b4d8e;     /* anchor — 8.40:1 on white */
+  --color-brand-800: #143a6b;
+  --color-brand-900: #0f2e52;     /* masthead */
+
+  /* -- Safety classification (reserved) ------------------------------------ */
+  --color-safe: #15803d;          /* 5.02:1 */
+  --color-safe-bg: #f0fdf4;
+  --color-safe-line: #bbf7d0;
+
+  --color-restricted: #b45309;    /* 5.02:1 */
+  --color-restricted-bg: #fffbeb;
+  --color-restricted-line: #fde68a;
+
+  --color-unsafe: #b91c1c;        /* 6.47:1 */
+  --color-unsafe-bg: #fef2f2;
+  --color-unsafe-line: #fecaca;
+
+  /* -- Feedback ------------------------------------------------------------ */
+  --color-info: #1b4d8e;
+  --color-info-bg: #e8f1fc;
+  --color-warn: #b45309;
+  --color-warn-bg: #fffbeb;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
+  --color-ok: #15803d;
+  --color-ok-bg: #f0fdf4;
+
+  /* -- Type ---------------------------------------------------------------- */
+  --font-sans: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  --text-2xs: 0.6875rem;  /* 11px — table meta, badge text */
+  --text-xs: 0.75rem;     /* 12px */
+  --text-sm: 0.875rem;    /* 14px — body default in dense UI */
+  --text-base: 1rem;      /* 16px */
+  --text-lg: 1.125rem;    /* 18px */
+  --text-xl: 1.375rem;    /* 22px */
+  --text-2xl: 1.75rem;    /* 28px — page titles */
+
+  /* -- Radius -------------------------------------------------------------- */
+  /* Deliberately squared-off. Pill shapes are reserved for status dots and
+     avatars; buttons-as-pills read as template design. */
+  --radius-control: 0.375rem;  /* 6px  — buttons, inputs */
+  --radius-card: 0.5rem;       /* 8px  — cards, panels */
+  --radius-overlay: 0.625rem;  /* 10px — modals, sheets */
+
+  /* -- Elevation ----------------------------------------------------------- */
+  /* Exactly two steps. Depth is carried by hairline borders, not shadow. */
+  --shadow-raised: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.10);
+  --shadow-overlay: 0 10px 15px -3px rgb(15 23 42 / 0.10), 0 4px 6px -4px rgb(15 23 42 / 0.10);
+}
+
+/* ============================================================================
+   Base
+   ========================================================================= */
+
 :root {
   color-scheme: light;
 }
 
 body {
   margin: 0;
-  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Identifiers, counts and confidence scores must align in columns. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* A single visible focus treatment, applied consistently. Keyboard users get a
+   ring; pointer users do not, which keeps the dense UI calm. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-brand-700);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* Motion is for orientation and feedback only. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

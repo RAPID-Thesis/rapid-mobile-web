@@ -2,30 +2,33 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { User, VerificationStatus } from '../types';
+import {
+  Alert,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  RoleBadge,
+  SkeletonRows,
+  VerificationBadge,
+} from '../components/ui';
+import { UsersIcon } from '../components/ui/icons';
 
-function getRoleBadge(role: string) {
-  switch (role) {
-    case 'admin': return 'bg-purple-100 text-purple-700';
-    case 'engineer': return 'bg-blue-100 text-blue-700';
-    case 'drrmo': return 'bg-teal-100 text-teal-700';
-    case 'inspector': return 'bg-slate-100 text-slate-700';
-    default: return 'bg-slate-100 text-slate-700';
-  }
-}
-
-function getStatusBadge(status?: VerificationStatus | null) {
-  switch (status) {
-    case 'pending': return 'bg-amber-100 text-amber-700';
-    case 'rejected': return 'bg-red-100 text-red-700';
-    case 'approved':
-    default:
-      return 'bg-emerald-100 text-emerald-700';
-  }
-}
-
-function statusLabel(status?: VerificationStatus | null) {
+function statusLabel(status?: VerificationStatus | null): VerificationStatus {
   if (status === undefined || status === null) return 'approved';
   return status;
+}
+
+function initialsOf(name: string | null): string {
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 export default function UsersPage() {
@@ -33,7 +36,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState('');
+  const [notice, setNotice] = useState('');
 
   const loadUsers = async () => {
     const { data, error: queryError } = await supabase
@@ -56,7 +59,7 @@ export default function UsersPage() {
 
   const pendingUsers = useMemo(
     () => users.filter((u) => u.verification_status === 'pending'),
-    [users]
+    [users],
   );
 
   const updateStatus = async (userId: string, next: VerificationStatus) => {
@@ -69,191 +72,187 @@ export default function UsersPage() {
         .eq('id', userId);
       if (updateError) throw updateError;
 
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, verification_status: next } : u))
-      );
-      setToast(
-        next === 'approved'
-          ? 'User approved.'
-          : next === 'rejected'
-          ? 'User rejected.'
-          : 'User updated.'
-      );
-      window.setTimeout(() => setToast(''), 3000);
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, verification_status: next } : u)));
+      setNotice(next === 'approved' ? 'User approved.' : 'User rejected.');
+      window.setTimeout(() => setNotice(''), 4000);
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Unable to update user verification.';
+      const message = err instanceof Error ? err.message : 'Unable to update user verification.';
       setError(message);
     } finally {
       setBusyId(null);
     }
   };
 
-  if (loading) {
+  // A hard load failure means the table below would be empty and misleading.
+  if (error && users.length === 0 && !loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-      </div>
+      <>
+        <PageHeader title="Users" />
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setLoading(true);
+            void loadUsers();
+          }}
+        />
+      </>
     );
   }
 
   return (
-    <div>
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 max-w-sm rounded-lg bg-emerald-600 text-white px-4 py-3 shadow-lg">
-          {toast}
-        </div>
-      )}
+    <>
+      <PageHeader
+        title="Users"
+        description="Approve sign-up requests and review existing accounts."
+        actions={
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setLoading(true);
+              void loadUsers();
+            }}
+          >
+            Refresh
+          </Button>
+        }
+      />
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-black text-slate-800">User Management</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Approve or reject pending sign-up requests and review existing users.
-          </p>
-          <p className="text-xs text-slate-500 mt-2">
-            To permanently remove an <strong>approved</strong> user, use{' '}
-            <Link to="/admin/settings" className="text-blue-600 font-semibold hover:underline">
-              Admin settings
-            </Link>
-            .
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setLoading(true);
-            void loadUsers();
-          }}
-          className="text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-        >
-          Refresh
-        </button>
-      </div>
+      <div className="space-y-3">
+        {notice && <Alert tone="ok">{notice}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
-      {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{error}</div>
-      )}
-
-      <section className="mb-8">
-        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">
-          Pending Approvals ({pendingUsers.length})
-        </h3>
-        <div className="bg-white rounded-xl overflow-hidden border border-amber-200 shadow-sm">
-          {pendingUsers.length === 0 ? (
-            <div className="text-center py-10 text-slate-400">
-              <p className="text-sm">No pending sign-up requests.</p>
-            </div>
+        {/* Pending approvals lead: it is the only part of this page with an
+            action attached, and accounts sit unusable until it happens. */}
+        <Card>
+          <CardHeader
+            title={`Pending approvals (${pendingUsers.length})`}
+            description="New accounts cannot sign in until approved."
+          />
+          {loading ? (
+            <SkeletonRows rows={2} />
+          ) : pendingUsers.length === 0 ? (
+            <EmptyState title="Nothing waiting" description="No sign-up requests need a decision." />
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-xs text-slate-500 uppercase tracking-wider bg-amber-50">
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Requested Role</th>
-                  <th className="px-4 py-3">Submitted</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {pendingUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-semibold text-sm text-slate-800">
-                      {user.full_name || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{user.email}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold capitalize ${getRoleBadge(user.role)}`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-2">
-                        <button
-                          disabled={busyId === user.id}
-                          onClick={() => void updateStatus(user.id, 'approved')}
-                          className="text-xs font-bold px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                        >
-                          {busyId === user.id ? '...' : 'Approve'}
-                        </button>
-                        <button
-                          disabled={busyId === user.id}
-                          onClick={() => void updateStatus(user.id, 'rejected')}
-                          className="text-xs font-bold px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <caption className="sr-only">Accounts awaiting approval</caption>
+                <thead>
+                  <tr className="border-b border-line bg-warn-bg text-left text-2xs uppercase tracking-wider text-restricted">
+                    <th scope="col" className="px-4 py-2 font-medium">Name</th>
+                    <th scope="col" className="px-4 py-2 font-medium">Email</th>
+                    <th scope="col" className="px-4 py-2 font-medium">Requested role</th>
+                    <th scope="col" className="px-4 py-2 font-medium">Submitted</th>
+                    <th scope="col" className="px-4 py-2 text-right font-medium">Decision</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
-
-      <section>
-        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">
-          All Users
-        </h3>
-        <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left text-xs text-slate-500 uppercase tracking-wider bg-slate-50">
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">LGU Code</th>
-                <th className="px-4 py-3">Joined</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map((user) => {
-                const status = statusLabel(user.verification_status);
-                return (
-                  <tr key={user.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">
-                          {user.full_name
-                            ? user.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)
-                            : '?'}
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {pendingUsers.map((user) => (
+                    <tr key={user.id} className="transition-colors hover:bg-surface-raised">
+                      <td className="px-4 py-2.5 font-medium text-ink">{user.full_name || '—'}</td>
+                      <td className="px-4 py-2.5 text-xs text-ink-muted">{user.email}</td>
+                      <td className="px-4 py-2.5">
+                        <RoleBadge role={user.role} />
+                      </td>
+                      <td className="tabular px-4 py-2.5 text-2xs text-ink-subtle">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            loading={busyId === user.id}
+                            onClick={() => void updateStatus(user.id, 'approved')}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={busyId === user.id}
+                            onClick={() => void updateStatus(user.id, 'rejected')}
+                          >
+                            Reject
+                          </Button>
                         </div>
-                        <span className="font-semibold text-sm text-slate-800">{user.full_name || '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{user.email}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold capitalize ${getRoleBadge(user.role)}`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold capitalize ${getStatusBadge(user.verification_status)}`}>
-                        {status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{user.lgu_code || '—'}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {users.length === 0 && (
-            <div className="text-center py-12 text-slate-400">
-              <p className="text-lg font-semibold mb-1">No users found</p>
-              <p className="text-sm">Users will appear here once they register.</p>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-        </div>
-      </section>
-    </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title={`All users (${users.length})`}
+            description={
+              <>
+                To permanently remove an approved user, use{' '}
+                <Link to="/admin/settings" className="font-medium text-brand-700 hover:underline">
+                  Admin settings
+                </Link>
+                .
+              </>
+            }
+          />
+          {loading ? (
+            <SkeletonRows rows={6} />
+          ) : users.length === 0 ? (
+            <EmptyState
+              icon={<UsersIcon className="h-8 w-8" />}
+              title="No users yet"
+              description="Accounts appear here once people register through the portal or mobile app."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <caption className="sr-only">All registered users</caption>
+                <thead>
+                  <tr className="border-b border-line bg-surface-raised text-left text-2xs uppercase tracking-wider text-ink-subtle">
+                    <th scope="col" className="px-4 py-2 font-medium">Name</th>
+                    <th scope="col" className="px-4 py-2 font-medium">Email</th>
+                    <th scope="col" className="px-4 py-2 font-medium">Role</th>
+                    <th scope="col" className="px-4 py-2 font-medium">Status</th>
+                    <th scope="col" className="px-4 py-2 font-medium">LGU</th>
+                    <th scope="col" className="px-4 py-2 text-right font-medium">Joined</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {users.map((user) => (
+                    <tr key={user.id} className="transition-colors hover:bg-surface-raised">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            aria-hidden="true"
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-2xs font-semibold text-brand-700"
+                          >
+                            {initialsOf(user.full_name)}
+                          </span>
+                          <span className="font-medium text-ink">{user.full_name || '—'}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-ink-muted">{user.email}</td>
+                      <td className="px-4 py-2.5">
+                        <RoleBadge role={user.role} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <VerificationBadge status={statusLabel(user.verification_status)} />
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-ink-muted">{user.lgu_code || '—'}</td>
+                      <td className="tabular px-4 py-2.5 text-right text-2xs text-ink-subtle">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+    </>
   );
 }

@@ -1,28 +1,79 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { APP_NAME } from '../../lib/branding';
+import { cn } from '../../lib/cn';
+import {
+  AssessmentsIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  DashboardIcon,
+  HeatmapIcon,
+  ReportsIcon,
+  SettingsIcon,
+  SignOutIcon,
+  UsersIcon,
+} from '../ui/icons';
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
-  { to: '/assessments', label: 'Assessments', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-  { to: '/heatmap', label: 'Heatmap', icon: 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7' },
-  { to: '/reports', label: 'Reports', icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
-  { to: '/users', label: 'Users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m3 5.197V21', roles: ['admin'] },
-  { to: '/admin/settings', label: 'Admin settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', roles: ['admin'] },
+/**
+ * Navigation is grouped by what the user is doing, not by an arbitrary flat
+ * list: daily fieldwork lives under Operations, account/system tasks under
+ * Administration. The Administration group disappears entirely for non-admins
+ * rather than rendering disabled items.
+ */
+const NAV_GROUPS: Array<{
+  heading: string;
+  items: Array<{
+    to: string;
+    label: string;
+    icon: typeof DashboardIcon;
+    end?: boolean;
+    roles?: string[];
+  }>;
+}> = [
+  {
+    heading: 'Operations',
+    items: [
+      { to: '/', label: 'Dashboard', icon: DashboardIcon, end: true },
+      { to: '/assessments', label: 'Assessments', icon: AssessmentsIcon },
+      { to: '/heatmap', label: 'Damage map', icon: HeatmapIcon },
+      { to: '/reports', label: 'Reports', icon: ReportsIcon },
+    ],
+  },
+  {
+    heading: 'Administration',
+    items: [
+      { to: '/users', label: 'Users', icon: UsersIcon, roles: ['admin'] },
+      { to: '/admin/settings', label: 'Settings', icon: SettingsIcon, roles: ['admin'] },
+    ],
+  },
 ];
 
-export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export default function Sidebar({
+  collapsed,
+  onToggle,
+  onNavigate,
+  variant = 'fixed',
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+  /** Called after a nav item is chosen — lets the mobile drawer close itself. */
+  onNavigate?: () => void;
+  variant?: 'fixed' | 'drawer';
+}) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
 
   const displayName = profile?.full_name || profile?.email || 'User';
-  const roleLabel = profile?.role
-    ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
-    : '';
+  const roleLabel = profile?.role ? profile.role[0].toUpperCase() + profile.role.slice(1) : '';
+  const initials = displayName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.roles || (profile && item.roles.includes(profile.role))
-  );
+  // In the drawer the sidebar is always full-width; collapsing is desktop-only.
+  const isCollapsed = variant === 'fixed' && collapsed;
 
   const handleSignOut = async () => {
     await signOut();
@@ -30,60 +81,131 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
   };
 
   return (
-    <aside className={`bg-slate-950 text-white flex flex-col transition-all duration-200 ${collapsed ? 'w-16' : 'w-64'}`}>
-      <div className="flex items-center gap-2 px-4 h-16 border-b border-slate-800">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-black text-sm">R</div>
-            <span className="font-bold text-lg tracking-wide">{APP_NAME}</span>
+    <aside
+      className={cn(
+        'flex h-full flex-col bg-brand-900 text-white transition-[width] duration-150',
+        isCollapsed ? 'w-16' : 'w-60',
+        variant === 'drawer' && 'w-72',
+      )}
+    >
+      {/* Institutional masthead. The CDRRMO seal is the authenticity anchor —
+          it belongs to the office that actually operates this tool. */}
+      <div
+        className={cn(
+          'flex items-center gap-2.5 border-b border-white/10 px-3',
+          isCollapsed ? 'h-14 justify-center' : 'h-16',
+        )}
+      >
+        <img
+          src="/brand/cdrrmo-seal.png"
+          srcSet="/brand/cdrrmo-seal.png 1x, /brand/cdrrmo-seal@2x.png 2x"
+          alt=""
+          width={32}
+          height={32}
+          className="shrink-0 rounded-full bg-white"
+        />
+        {!isCollapsed && (
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-sm font-semibold tracking-tight">{APP_NAME}</p>
+            <p className="truncate text-2xs text-white/60">San Jose del Monte · CDRRMO</p>
           </div>
         )}
-        <button onClick={onToggle} className="ml-auto p-2 hover:bg-slate-800 rounded-lg">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />
-          </svg>
-        </button>
       </div>
 
-      <nav className="flex-1 py-4">
-        {visibleItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 mx-2 rounded-lg transition-colors ${
-                isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-900 hover:text-white'
-              }`
-            }
-          >
-            <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-            </svg>
-            {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
-          </NavLink>
-        ))}
+      <nav className="flex-1 overflow-y-auto py-3" aria-label="Main">
+        {NAV_GROUPS.map((group) => {
+          const items = group.items.filter(
+            (item) => !item.roles || (profile && item.roles.includes(profile.role)),
+          );
+          if (items.length === 0) return null;
+
+          return (
+            <div key={group.heading} className="mb-4 last:mb-0">
+              {!isCollapsed && (
+                <p className="px-4 pb-1.5 text-2xs font-semibold uppercase tracking-wider text-white/40">
+                  {group.heading}
+                </p>
+              )}
+              <ul className="space-y-0.5 px-2">
+                {items.map((item) => {
+                  const IconCmp = item.icon;
+                  return (
+                    <li key={item.to}>
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        onClick={onNavigate}
+                        title={isCollapsed ? item.label : undefined}
+                        className={({ isActive }) =>
+                          cn(
+                            'flex h-9 items-center gap-2.5 rounded-control px-2.5 text-sm transition-colors duration-100',
+                            isCollapsed && 'justify-center px-0',
+                            isActive
+                              ? // A left rule plus a raised surface, rather than a
+                                // saturated fill — keeps the nav quiet next to the
+                                // status colours in the content area.
+                                'bg-white/10 font-medium text-white shadow-[inset_2px_0_0_0_var(--color-brand-500)]'
+                              : 'text-white/70 hover:bg-white/5 hover:text-white',
+                          )
+                        }
+                      >
+                        <IconCmp className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span className="truncate">{item.label}</span>}
+                      </NavLink>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
       </nav>
 
-      {!collapsed && (
-        <div className="border-t border-slate-800 p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold">
-              {displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+      <div className="border-t border-white/10 p-2">
+        {!isCollapsed ? (
+          <>
+            <div className="flex items-center gap-2.5 rounded-control px-2 py-2">
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-2xs font-semibold"
+              >
+                {initials}
+              </span>
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-xs font-medium">{displayName}</span>
+                <span className="block truncate text-2xs text-white/50">{roleLabel}</span>
+              </span>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{displayName}</p>
-              <p className="text-xs text-slate-400">{roleLabel}</p>
-            </div>
-          </div>
+            <button
+              onClick={handleSignOut}
+              className="mt-1 flex h-9 w-full items-center gap-2.5 rounded-control px-2.5 text-xs text-white/60 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              <SignOutIcon className="h-4 w-4 shrink-0" />
+              Sign out
+            </button>
+          </>
+        ) : (
           <button
             onClick={handleSignOut}
-            className="mt-3 w-full text-xs text-slate-400 hover:text-white py-2 px-3 rounded-lg hover:bg-slate-800 transition-colors text-left"
+            aria-label="Sign out"
+            title="Sign out"
+            className="flex h-9 w-full items-center justify-center rounded-control text-white/60 transition-colors hover:bg-white/5 hover:text-white"
           >
-            Sign Out
+            <SignOutIcon className="h-4 w-4" />
           </button>
-        </div>
-      )}
+        )}
+
+        {variant === 'fixed' && (
+          <button
+            onClick={onToggle}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="mt-1 flex h-8 w-full items-center justify-center rounded-control text-white/40 transition-colors hover:bg-white/5 hover:text-white"
+          >
+            {collapsed ? <ChevronRightIcon className="h-4 w-4" /> : <ChevronLeftIcon className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

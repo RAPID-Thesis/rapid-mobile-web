@@ -39,6 +39,27 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
+/**
+ * Local-only escape hatch for inspecting the UI without a Supabase account.
+ * Double-gated: it is stripped from production builds by `import.meta.env.DEV`
+ * *and* requires the opt-in env var, so it can never ship enabled.
+ *
+ * It only fakes the route guard — Supabase queries still run with the anon key
+ * and no session, so pages render their empty/error states, not real data.
+ */
+const DEV_BYPASS_AUTH =
+  import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS_AUTH === 'true';
+
+const DEV_PROFILE: UserProfile = {
+  id: '00000000-0000-0000-0000-000000000000',
+  email: 'dev@localhost',
+  full_name: 'Local Preview',
+  role: 'admin',
+  lgu_code: 'SJDM',
+  avatar_url: null,
+  verification_status: 'approved',
+};
+
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
   try {
     const { data, error } = await supabase
@@ -213,11 +234,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        session,
+        session: DEV_BYPASS_AUTH ? ({ user: null } as unknown as Session) : session,
         user,
-        profile,
-        loading,
-        profileLoading,
+        profile: DEV_BYPASS_AUTH ? DEV_PROFILE : profile,
+        loading: DEV_BYPASS_AUTH ? false : loading,
+        profileLoading: DEV_BYPASS_AUTH ? false : profileLoading,
         signIn,
         signUp,
         signOut,
