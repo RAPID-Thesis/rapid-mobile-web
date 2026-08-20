@@ -1,11 +1,21 @@
 {
-  "exported_at_utc": "2026-05-23T07:25:02.466724+00:00",
+  "exported_at_utc": "2026-08-18T08:14:52.960863+00:00",
   "fusion": {
     "image_weight": 0.45,
     "tabular_weight": 0.55
   },
   "pre": {
     "classes": [
+      "high",
+      "low",
+      "moderate"
+    ],
+    "resnet_output_classes": [
+      "high",
+      "low",
+      "moderate"
+    ],
+    "rf_output_classes": [
       "high",
       "low",
       "moderate"
@@ -76,11 +86,11 @@
           "previous_retrofit_as_int"
         ],
         "numeric_medians": [
-          1987.0,
-          39.0,
+          1986.0,
+          40.0,
           3.0,
-          7.347093398330202,
-          94.18472290039062,
+          7.025743110567944,
+          98.28386688232422,
           5.1287117,
           0.0
         ],
@@ -118,6 +128,7 @@
               "moment_frame",
               "shear_wall",
               "unknown",
+              "unreinforced_masonry",
               "wood_frame"
             ]
           },
@@ -160,6 +171,7 @@
           "cat__structural_system_moment_frame",
           "cat__structural_system_shear_wall",
           "cat__structural_system_unknown",
+          "cat__structural_system_unreinforced_masonry",
           "cat__structural_system_wood_frame",
           "cat__foundation_type_deep",
           "cat__foundation_type_mat",
@@ -169,7 +181,7 @@
           "cat__material_mixed",
           "cat__material_wood"
         ],
-        "input_dim": 28
+        "input_dim": 29
       },
       "classes": [
         "high",
@@ -181,7 +193,7 @@
           "name": "X",
           "shape": [
             null,
-            28
+            29
           ],
           "type": "tensor(float)"
         }
@@ -204,14 +216,24 @@
         }
       ],
       "smoke": {
-        "label": "moderate",
-        "confidence": 0.6359277963638306
+        "label": "low",
+        "confidence": 0.8051064014434814
       },
-      "size_bytes": 16294681
+      "size_bytes": 16932012
     }
   },
   "post": {
     "classes": [
+      "RESTRICTED",
+      "SAFE",
+      "UNSAFE"
+    ],
+    "resnet_output_classes": [
+      "UNSAFE",
+      "SAFE",
+      "RESTRICTED"
+    ],
+    "rf_output_classes": [
       "RESTRICTED",
       "SAFE",
       "UNSAFE"
@@ -285,8 +307,8 @@
           1987.0,
           39.0,
           3.0,
-          7.337335386137683,
-          94.50863265991211,
+          7.046030385030644,
+          98.50316619873047,
           5.1287117,
           0.0
         ],
@@ -324,6 +346,7 @@
               "moment_frame",
               "shear_wall",
               "unknown",
+              "unreinforced_masonry",
               "wood_frame"
             ]
           },
@@ -366,6 +389,7 @@
           "cat__structural_system_moment_frame",
           "cat__structural_system_shear_wall",
           "cat__structural_system_unknown",
+          "cat__structural_system_unreinforced_masonry",
           "cat__structural_system_wood_frame",
           "cat__foundation_type_deep",
           "cat__foundation_type_mat",
@@ -375,7 +399,7 @@
           "cat__material_mixed",
           "cat__material_wood"
         ],
-        "input_dim": 28
+        "input_dim": 29
       },
       "classes": [
         "RESTRICTED",
@@ -387,7 +411,7 @@
           "name": "X",
           "shape": [
             null,
-            28
+            29
           ],
           "type": "tensor(float)"
         }
@@ -410,10 +434,10 @@
         }
       ],
       "smoke": {
-        "label": "RESTRICTED",
-        "confidence": 0.6365995407104492
+        "label": "SAFE",
+        "confidence": 0.7571485042572021
       },
-      "size_bytes": 16365191
+      "size_bytes": 23940353
     }
   },
   "image_preprocess": {
