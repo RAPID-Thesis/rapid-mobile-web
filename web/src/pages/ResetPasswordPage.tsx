@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import type { EmailOtpType } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { AuthLayout } from '../components/layout/AuthLayout';
 import { Alert, Button, Field, Input, Skeleton } from '../components/ui';
@@ -21,11 +22,39 @@ export default function ResetPasswordPage() {
       try {
         const href = window.location.href;
         const url = new URL(href);
-        if (url.searchParams.get('code')) {
+        const tokenHash = url.searchParams.get('token_hash');
+        const otpType = (url.searchParams.get('type') ?? 'recovery') as EmailOtpType;
+
+        if (tokenHash) {
+          // Preferred path. verifyOtp carries no client-side state: the hash in the
+          // link is itself the credential, so the reset works in any browser, on any
+          // device, even if the request was made somewhere else entirely.
+          const { error: otpError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType,
+          });
+          if (otpError) {
+            if (!cancelled) setInitError(otpError.message);
+            if (!cancelled) setChecking(false);
+            return;
+          }
+          // Drop the single-use token from the address bar and browser history.
+          window.history.replaceState({}, document.title, url.pathname);
+        } else if (url.searchParams.get('code')) {
+          // Legacy PKCE path, kept so links already sitting in inboxes still work.
+          // It requires the code_verifier stored when the reset was requested, so it
+          // only succeeds in the same browser and origin that requested it.
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(href);
           if (exchangeError) {
-            if (!cancelled) setInitError(exchangeError.message);
-            if (!cancelled) setChecking(false);
+            if (!cancelled) {
+              setInitError(
+                exchangeError.message.includes('code verifier')
+                  ? 'This link was opened on a different device or browser than the one that ' +
+                    'requested it. Request a new link and it will work anywhere.'
+                  : exchangeError.message,
+              );
+              setChecking(false);
+            }
             return;
           }
           window.history.replaceState({}, document.title, `${url.pathname}${url.hash}`);
