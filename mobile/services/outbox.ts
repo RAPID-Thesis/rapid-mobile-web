@@ -10,7 +10,11 @@ import type { LocalPredictionResult } from './localPredict';
 import { isApiUrlConfigured } from './api';
 import { getUserToken } from './auth';
 import type { LocationFix } from './location';
-import { submitAssessmentForMlSync, type WizardAssessmentSyncInput } from './sync';
+import {
+  submitAssessmentForMlSync,
+  toDevicePredictionPayload,
+  type WizardAssessmentSyncInput,
+} from './sync';
 
 const STORAGE_KEY = 'rapid_assessment_outbox_v1';
 let outboxRun: Promise<void> | null = null;
@@ -205,7 +209,16 @@ async function processOutboxOnce(): Promise<void> {
     await replaceItem(syncing);
 
     try {
-      await submitAssessmentForMlSync(syncing.input);
+      // Send the verdict the phone reached when the assessment was captured, so the
+      // portal shows exactly what the inspector saw -- online or offline.
+      await submitAssessmentForMlSync(
+        syncing.input,
+        toDevicePredictionPayload(
+          syncing.localPrediction,
+          syncing.localActionPlan,
+          syncing.localPriorityScore
+        )
+      );
       await removeOutbox(syncing.id);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

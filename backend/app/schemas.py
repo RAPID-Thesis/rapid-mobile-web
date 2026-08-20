@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # -- Enums --
@@ -201,6 +201,60 @@ class AssessmentCreate(BaseModel):
     structural_data: dict[str, Any] = {}
 
 
+PRE_LABELS = {"low", "moderate", "high"}
+POST_LABELS = {"SAFE", "RESTRICTED", "UNSAFE"}
+
+
+class DeviceActionPlan(BaseModel):
+    """The FEMA/ATC-20 template plan the phone produced without a network."""
+
+    recommendations: list[str] = Field(default_factory=list, max_length=40)
+    generated_by: Literal["device-local"] = "device-local"
+
+
+class DevicePrediction(BaseModel):
+    """Classification computed on the phone.
+
+    The device is the only thing that classifies: it runs the same fused model the
+    server used to, but against geo features from its bundled sjdm_geo.json. The
+    server therefore stores this verbatim instead of recomputing -- a second
+    inference pass would read different elevation/slope/fault values and disagree
+    with the result the inspector was shown in the field.
+    """
+
+    phase: Literal["pre", "post"]
+    fused_label: str
+    fused_confidence: float = Field(..., ge=0.0, le=1.0)
+    probabilities: dict[str, float] = Field(default_factory=dict)
+
+    image_label: str | None = None
+    image_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    image_probabilities: dict[str, float] | None = None
+
+    tabular_label: str | None = None
+    tabular_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    tabular_probabilities: dict[str, float] | None = None
+
+    fusion_weights: dict[str, float] | None = None
+
+    # Distinguishes a real on-device fusion run from the heuristic that fires when
+    # TFLite/ONNX fail to load. The UI must be able to tell these apart.
+    source: Literal["device-ml-fusion", "device-offline-heuristic"]
+
+    priority_score: float | None = Field(None, ge=0.0, le=1.0)
+    action_plan: DeviceActionPlan | None = None
+
+    @model_validator(mode="after")
+    def _label_matches_phase(self) -> DevicePrediction:
+        allowed = PRE_LABELS if self.phase == "pre" else POST_LABELS
+        if self.fused_label not in allowed:
+            raise ValueError(
+                f"fused_label {self.fused_label!r} is not valid for phase "
+                f"{self.phase!r}; expected one of {sorted(allowed)}"
+            )
+        return self
+
+
 class AssessmentSyncPayload(BaseModel):
     building_code: str = Field(..., min_length=1, max_length=100)
     address: str = Field(..., min_length=1, max_length=500)
@@ -213,6 +267,10 @@ class AssessmentSyncPayload(BaseModel):
     year_built: int | None = None
     phase: AssessmentPhase = AssessmentPhase.PRE_EARTHQUAKE
     structural_data: dict[str, Any] = {}
+
+    # Optional so an older mobile build still syncs; when absent the record is
+    # stored unclassified rather than being scored by a second, disagreeing engine.
+    device_prediction: DevicePrediction | None = None
 
 
 class AssessmentRead(BaseModel):

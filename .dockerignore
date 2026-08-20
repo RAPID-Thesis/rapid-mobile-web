@@ -13,3 +13,11 @@ node_modules
 *.md
 .cursor
 terminals
+
+# The API does not run inference — it must not ship training data or model weights.
+# Without these the build context was ~2.8 GB (ml/data alone is the 40k-image corpus).
+ml/artifacts
+ml/data
+ml/.venv
+ml/scripts
+supabase

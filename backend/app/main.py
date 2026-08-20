@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session, selectinload
 from .models import Assessment, AssessmentImage, Building, Profile, get_db
 from .schemas import (
     AdminDeleteUserBody,
-    AIPredictionResult,
     AssessmentCreate,
     AssessmentDetailRead,
     AssessmentRead,
@@ -29,18 +28,14 @@ from .schemas import (
     ProfileRead,
     ProfileUpdate,
     SignupRequest,
-    TabularPredictPayload,
     TokenResponse,
 )
 from .security import get_current_user, require_roles
-from .services.ml_fusion_engine import (
-    MODEL_DIR,
-    TabularInput,
-    predict_fused,
-    predict_image,
-    predict_tabular,
-    process_assessment,
-)
+# The API no longer runs inference: the phone classifies with its bundled models and
+# the server stores that verdict. Nothing here may import ml_fusion_engine, or the
+# container would need TensorFlow again.
+from .services.action_plan_task import enrich_action_plan
+from .services.device_prediction import apply_device_prediction
 from .supabase_client import get_supabase_admin, get_supabase_public
 
 MAX_IMAGES = 8
@@ -411,7 +406,9 @@ def create_assessment(
     db.commit()
     db.refresh(assessment)
 
-    background_tasks.add_task(process_assessment, assessment.id)
+    # Records created here stay unclassified: classification happens on the phone,
+    # which submits through POST /api/assessments/sync with its device_prediction.
+    # There is no server-side model to fall back on.
     return assessment
 
 
@@ -495,6 +492,13 @@ async def sync_assessment(
                 )
             )
 
+        # The phone already classified this in the field, using its bundled models.
+        # Store that verdict verbatim: re-running inference here would read different
+        # geo features (server SRTM/shapefile vs the device's sjdm_geo.json) and
+        # silently replace the result the inspector was shown.
+        if payload.device_prediction is not None:
+            apply_device_prediction(db_assessment, payload.device_prediction)
+
         db.commit()
 
         created = db.scalar(
@@ -505,7 +509,11 @@ async def sync_assessment(
         if created is None:
             raise HTTPException(status_code=500, detail="Assessment saved but could not be reloaded.")
 
-        background_tasks.add_task(process_assessment, created.id)
+        # Online-only enrichment: upgrade the device's template action plan to a
+        # Gemini-authored one. It never touches the classification.
+        if payload.device_prediction is not None:
+            background_tasks.add_task(enrich_action_plan, created.id)
+
         return created
     except HTTPException:
         db.rollback()
@@ -577,132 +585,6 @@ def review_assessment(
     return assessment
 
 
-# =============================================================================
-# AI INFERENCE
-# =============================================================================
-
-def _payload_to_tabular_input(payload: TabularPredictPayload) -> TabularInput:
-    """Feed the richer fusion engine mapper so mobile/CLI vocabularies are normalized."""
-    from .services.ml_fusion_engine import build_tabular_input
-
-    return build_tabular_input(
-        building={
-            "year_built": payload.year_built,
-            "number_of_stories": payload.number_of_stories,
-            "building_use": payload.building_use.value,
-            "soil_classification": payload.soil_classification.value if payload.soil_classification else None,
-            "distance_to_fault_km": payload.distance_to_fault_km,
-            "previous_retrofit": payload.previous_retrofit,
-            "latitude": payload.latitude,
-            "longitude": payload.longitude,
-            "structural_system": payload.structural_system,
-            "foundation_type": payload.foundation_type,
-        },
-        structural_data={
-            "elevation_m": payload.elevation_m,
-            "slope_deg": payload.slope_deg,
-            "material": payload.material,
-            "structural_system": payload.structural_system,
-            "foundation_type": payload.foundation_type,
-        },
-    )
-
-
-@app.post("/api/ai/predict/image", response_model=AIPredictionResult)
-async def ai_predict_image(
-    phase: str = Form("pre"),
-    images: list[UploadFile] = File(..., description="1-4 building photos (JPEG/PNG)."),
-    _: AuthenticatedUser = Depends(get_current_user),
-):
-    if not images:
-        raise HTTPException(status_code=400, detail="At least one image is required.")
-    if len(images) > MAX_IMAGES:
-        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES} images allowed.")
-
-    blobs = [await img.read() for img in images]
-    try:
-        result = predict_image(blobs, phase)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return AIPredictionResult(
-        phase=phase,
-        label=result["label"],
-        confidence=result["confidence"],
-        probabilities=result["probabilities"],
-        image=result,
-    )
-
-
-@app.post("/api/ai/predict/tabular", response_model=AIPredictionResult)
-def ai_predict_tabular(
-    payload: TabularPredictPayload,
-    _: AuthenticatedUser = Depends(get_current_user),
-):
-    tabular = _payload_to_tabular_input(payload)
-    try:
-        result = predict_tabular(tabular, payload.phase.value)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return AIPredictionResult(
-        phase=payload.phase.value,
-        label=result["label"],
-        confidence=result["confidence"],
-        probabilities=result["probabilities"],
-        tabular=result,
-        feature_importance=result.get("feature_importance"),
-    )
-
-
-@app.post("/api/ai/predict/fused", response_model=AIPredictionResult)
-async def ai_predict_fused(
-    payload: str = Form(..., description="JSON-encoded TabularPredictPayload."),
-    images: list[UploadFile] = File(default=[]),
-    _: AuthenticatedUser = Depends(get_current_user),
-):
-    try:
-        tabular_payload = TabularPredictPayload.model_validate_json(payload)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-
-    if len(images) > MAX_IMAGES:
-        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES} images allowed.")
-
-    blobs = [await img.read() for img in images] if images else None
-    tabular_input = _payload_to_tabular_input(tabular_payload)
-
-    try:
-        result = predict_fused(
-            images=blobs,
-            tabular=tabular_input,
-            phase=tabular_payload.phase.value,
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return AIPredictionResult(
-        phase=result["phase"],
-        label=result["label"],
-        confidence=result["confidence"],
-        probabilities=result["probabilities"],
-        weights=result.get("weights"),
-        image=result.get("image"),
-        tabular=result.get("tabular"),
-        feature_importance=(result.get("tabular") or {}).get("feature_importance"),
-    )
-
-
-# =============================================================================
-# ROOT & HEALTH
-# =============================================================================
-
 @app.get("/")
 def root():
     """Avoid 404 when opening the server base URL in a browser."""
@@ -717,16 +599,10 @@ def root():
 
 @app.get("/api/health")
 def health():
-    artifact_names = (
-        "rf_pre.joblib",
-        "rf_post.joblib",
-        "resnet50_pre.keras",
-        "resnet50_post.keras",
-    )
-    missing = [name for name in artifact_names if not (MODEL_DIR / name).exists()]
+    # Inference runs on the device, so there are no server model artifacts to check
+    # and nothing to warm up -- this answers immediately on a cold container.
     return {
         "status": "ok",
-        "version": "0.2.0",
-        "ml_artifacts_ready": len(missing) == 0,
-        "missing_artifacts": missing or None,
+        "version": "0.3.0",
+        "inference": "on-device",
     }

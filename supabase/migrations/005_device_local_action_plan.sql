@@ -1,0 +1,21 @@
+-- 005: allow storing the action plan the phone generates offline.
+--
+-- Classification now happens entirely on the device: the mobile app runs the
+-- bundled ResNet50 + Random Forest fusion and ships the verdict with the sync
+-- payload, which the API stores verbatim. Previously the server re-ran inference
+-- and overwrote it, and because the two sides derive elevation / slope / fault
+-- distance from different sources (device sjdm_geo.json vs server SRTM tiles and
+-- the PHIVOLCS shapefile) the answer changed on every single sync.
+--
+-- Every assessment therefore arrives with the FEMA/ATC-20 template plan the phone
+-- produced without a network. `action_plan_source` only allowed 'gemini' and
+-- 'template-fallback', so that plan had nowhere to go. This adds the third value.
+--
+-- Records still get a Gemini-authored plan when the backend can reach the API;
+-- that upgrade replaces the device plan but never the classification.
+--
+-- Note: ALTER TYPE ... ADD VALUE is permitted inside a transaction on PostgreSQL
+-- 12+, but the new value cannot be *used* until that transaction commits. This
+-- migration only declares it, so it is safe to run on its own.
+
+ALTER TYPE action_plan_source ADD VALUE IF NOT EXISTS 'device-local';

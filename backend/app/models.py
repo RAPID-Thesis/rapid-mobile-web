@@ -60,7 +60,10 @@ _assessment_status = PG_ENUM(
     name="assessment_status",
     create_type=False,
 )
-_action_plan_source = PG_ENUM("gemini", "template-fallback", name="action_plan_source", create_type=False)
+_action_plan_source = PG_ENUM(
+    "gemini", "template-fallback", "device-local",
+    name="action_plan_source", create_type=False,
+)
 _image_angle = PG_ENUM("front", "left", "right", "closeup", name="image_angle", create_type=False)
 
 
@@ -136,7 +139,7 @@ class Assessment(Base):
     ai_feature_importance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_fused_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_fused_confidence: Mapped[float | None] = mapped_column(Double, nullable=True)
-    ai_fusion_weights: Mapped[dict | None] = mapped_column(JSONB, default={"image": 0.5, "tabular": 0.5})
+    ai_fusion_weights: Mapped[dict | None] = mapped_column(JSONB, default={"image": 0.45, "tabular": 0.55})
 
     action_recommendations: Mapped[list | None] = mapped_column(ARRAY(Text), nullable=True)
     action_generated_by: Mapped[str | None] = mapped_column(_action_plan_source, nullable=True)
