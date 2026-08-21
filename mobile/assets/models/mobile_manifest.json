@@ -62,15 +62,15 @@
         "material"
       ],
       "sample_row": {
-        "year_built": 1995.0,
-        "building_age": 31.0,
-        "number_of_stories": 3.0,
+        "year_built": 1995,
+        "building_age": 31,
+        "number_of_stories": 3,
         "building_use": "residential",
         "soil_classification": "D",
         "distance_to_fault_km": 8.5,
-        "elevation_m": 120.0,
-        "slope_deg": 3.0,
-        "previous_retrofit_as_int": 0.0,
+        "elevation_m": 120,
+        "slope_deg": 3,
+        "previous_retrofit_as_int": 0,
         "structural_system": "moment_frame",
         "foundation_type": "shallow",
         "material": "concrete"
@@ -86,13 +86,13 @@
           "previous_retrofit_as_int"
         ],
         "numeric_medians": [
-          1986.0,
-          40.0,
-          3.0,
+          1986,
+          40,
+          3,
           7.025743110567944,
           98.28386688232422,
           5.1287117,
-          0.0
+          0
         ],
         "categorical_features": [
           "building_use",
@@ -280,15 +280,15 @@
         "material"
       ],
       "sample_row": {
-        "year_built": 1995.0,
-        "building_age": 31.0,
-        "number_of_stories": 3.0,
+        "year_built": 1995,
+        "building_age": 31,
+        "number_of_stories": 3,
         "building_use": "residential",
         "soil_classification": "D",
         "distance_to_fault_km": 8.5,
-        "elevation_m": 120.0,
-        "slope_deg": 3.0,
-        "previous_retrofit_as_int": 0.0,
+        "elevation_m": 120,
+        "slope_deg": 3,
+        "previous_retrofit_as_int": 0,
         "structural_system": "moment_frame",
         "foundation_type": "shallow",
         "material": "concrete"
@@ -304,13 +304,13 @@
           "previous_retrofit_as_int"
         ],
         "numeric_medians": [
-          1987.0,
-          39.0,
-          3.0,
+          1987,
+          39,
+          3,
           7.046030385030644,
           98.50316619873047,
           5.1287117,
-          0.0
+          0
         ],
         "categorical_features": [
           "building_use",
