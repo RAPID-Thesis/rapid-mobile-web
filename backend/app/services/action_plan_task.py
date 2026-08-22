@@ -42,6 +42,10 @@ async def enrich_action_plan(assessment_id: UUID) -> None:
             return
 
         building = assessment.building
+        # Site factors drive the screening, so the plan should know them. They live on
+        # the building row only when something populated it; what the inspector
+        # actually recorded is in the assessment's field form, so read that as well.
+        field = assessment.structural_data or {}
         result = generate_action_plan(
             phase="pre" if assessment.phase == "pre-earthquake" else "post",
             label=assessment.ai_fused_label,
@@ -54,6 +58,13 @@ async def enrich_action_plan(assessment_id: UUID) -> None:
                 "year_built": building.year_built,
                 "number_of_stories": building.number_of_stories,
                 "building_use": building.building_use,
+                "soil_classification": building.soil_classification or field.get("soilClass"),
+                "distance_to_fault_km": (
+                    building.distance_to_fault_km
+                    if building.distance_to_fault_km is not None
+                    else field.get("distance_to_fault_km")
+                ),
+                "structural_system": building.structural_system or field.get("structuralSystem"),
             },
         )
 

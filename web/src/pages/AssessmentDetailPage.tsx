@@ -119,6 +119,27 @@ function ProbabilityRow({ label, value }: { label: string; value: number }) {
   );
 }
 
+/**
+ * Read a field the inspector recorded, trying each spelling in turn.
+ *
+ * The buildings table has columns for soil class and fault distance, but the
+ * sync endpoint never writes them -- it only sets the identity/location fields
+ * when it first creates a building row. The values the inspector actually
+ * captured live in the assessment's `structural_data` blob, which is where the
+ * mobile app reads them from, so the portal reads the same place rather than
+ * showing an em dash next to data it holds.
+ */
+function fieldValue(data: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const v = data[key];
+    if (v == null) continue;
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null;
+    const text = String(v).trim();
+    if (text && text !== '—') return text;
+  }
+  return null;
+}
+
 function StructuralData({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data ?? {}).filter(([k]) => k !== '__proto__');
 
@@ -454,14 +475,24 @@ export default function AssessmentDetailPage() {
                 <DataRow label="Use" value={<span className="capitalize">{building.building_use}</span>} />
                 <DataRow label="Stories" value={building.number_of_stories} />
                 <DataRow label="Year built" value={building.year_built ?? '—'} />
-                <DataRow label="Soil class" value={building.soil_classification ?? '—'} />
+                <DataRow
+                  label="Soil class"
+                  value={
+                    building.soil_classification ??
+                    fieldValue(structural, 'soilClass', 'soil_class', 'soil_classification') ??
+                    '—'
+                  }
+                />
                 <DataRow
                   label="Distance to fault"
-                  value={
-                    building.distance_to_fault_km != null
-                      ? `${building.distance_to_fault_km.toFixed(2)} km`
-                      : '—'
-                  }
+                  value={(() => {
+                    const km =
+                      building.distance_to_fault_km ??
+                      Number(
+                        fieldValue(structural, 'distanceToFaultKm', 'distance_to_fault_km') ?? NaN,
+                      );
+                    return Number.isFinite(km) ? `${Number(km).toFixed(2)} km` : '—';
+                  })()}
                 />
                 <DataRow label="Previous retrofit" value={building.previous_retrofit ? 'Yes' : 'No'} />
               </CardBody>

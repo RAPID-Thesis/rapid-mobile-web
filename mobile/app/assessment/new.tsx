@@ -32,6 +32,7 @@ import {
   type LocalActionPlanResult,
 } from '../../services/localActionPlan';
 import { predictOnDevice } from '../../services/onDeviceMl';
+import { sampleGeoFeatures } from '../../services/ml/geoLookup';
 import { getModelLoadError } from '../../services/ml/modelLoader';
 import { formatPercent } from '../../utils/formatPercent';
 import { enqueueOutbox, processOutbox } from '../../services/outbox';
@@ -429,6 +430,9 @@ export default function NewAssessmentScreen() {
         Number.isFinite(storiesParsed) && storiesParsed > 0 ? storiesParsed : 1;
       const yearBuilt = Number.isFinite(yearParsed) ? yearParsed : null;
 
+      const siteGeo =
+        coords != null ? sampleGeoFeatures(coords.latitude, coords.longitude) : null;
+
       const structural_data = {
         stories: structuralData.stories,
         yearBuilt: structuralData.yearBuilt,
@@ -444,6 +448,17 @@ export default function NewAssessmentScreen() {
         photoCount: capturedPhotos.length,
         gps_accuracy_m: coords?.accuracy_m ?? null,
         gps_captured_at: coords?.capturedAt ?? null,
+        // Site values the bundled geo grid resolves from the GPS fix. They already
+        // feed the Random Forest; recording them here too means the portal can show
+        // the same site context the inspector saw, instead of an em dash -- the API
+        // container ships without the geo bundle, so the server cannot re-derive them.
+        ...(siteGeo
+          ? {
+              distance_to_fault_km: siteGeo.distance_to_fault_km,
+              elevation_m: siteGeo.elevation_m,
+              slope_deg: siteGeo.slope_deg,
+            }
+          : {}),
       };
 
       const imageUris = capturedPhotos.map((p) => p.uri);

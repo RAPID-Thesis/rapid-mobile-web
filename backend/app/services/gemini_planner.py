@@ -14,14 +14,62 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_SYSTEM = """You are an assistant for the RAPID Seismic Assessment platform (Philippines).
-You write concise, prioritized action items for building inspectors and LGU staff
-based on an AI-classified seismic risk level. Responses must:
+# Which protocol governs which phase. These are not interchangeable: FEMA P-154 is a
+# *pre-event* rapid visual screening that scores vulnerability, while ATC-20 is a
+# *post-event* safety evaluation that decides whether a damaged building may be
+# entered. Placards belong to ATC-20 only -- posting one off the back of a
+# pre-earthquake screening would assert a post-event safety determination nobody made.
+_PROTOCOL = {
+    "pre": "FEMA P-154 (Rapid Visual Screening of Buildings for Potential Seismic Hazards)",
+    "post": "ATC-20 (Procedures for Post-earthquake Safety Evaluation of Buildings)",
+}
 
-- be 4-6 numbered items, each one sentence, imperative voice
-- reference FEMA P-154 / ATC-20 conventions where relevant
-- end with a short disclaimer that this is AI-assisted and requires a licensed
-  structural engineer for final certification
+# ATC-20 posting outcomes. The colour is not decoration -- it is the legal posting
+# the evaluation produces, and it must follow the classification exactly.
+_PLACARD = {
+    "SAFE": ("GREEN", "INSPECTED", "normal occupancy may resume"),
+    "RESTRICTED": ("YELLOW", "RESTRICTED USE", "entry limited to short, essential visits"),
+    "UNSAFE": ("RED", "UNSAFE", "entry prohibited until an engineer clears the structure"),
+}
+
+_PROMPT_BASE = """You are an assistant for the RAPID Seismic Assessment platform, used by
+local government DRRMO staff and building inspectors in San Jose del Monte, Bulacan,
+Philippines.
+
+Write concise, prioritized action items for the assessment described below. Rules:
+
+- 4-6 numbered items, each a single sentence in imperative voice
+- every item must be an action someone can take this week, with a timeframe where
+  the protocol specifies one
+- stay inside the governing protocol named below; do not invent thresholds,
+  placard colours, or inspection intervals it does not define
+- refer to Philippine practice where it matters (barangay, LGU/DRRMO, NSCP)
+- do not recommend re-occupancy, repair, or demolition beyond what the
+  classification supports
+- end with a short disclaimer that this is AI-assisted and that final
+  certification requires a licensed structural engineer
+"""
+
+_PRE_RULES = """Governing protocol: {protocol}.
+
+This is a PRE-earthquake vulnerability screening. The building has not been through a
+damaging event, so:
+- do NOT post or mention an ATC-20 placard; placards are post-event only
+- frame follow-up as FEMA P-154 Level 1 / Level 2 screening, retrofit prioritisation,
+  and non-structural mitigation
+- the classification "{label}" is a vulnerability rating, not a damage state
+"""
+
+_POST_RULES = """Governing protocol: {protocol}.
+
+This is a POST-earthquake safety evaluation. The classification "{label}" corresponds to
+an ATC-20 {colour} "{posting}" placard, meaning {meaning}.
+
+- the FIRST item must be to post the {colour} ATC-20 placard and state the entry
+  restriction it carries
+- keep every later item consistent with that restriction; never suggest occupancy or
+  activity the placard forbids
+- reference ATC-20 Level 2 (detailed) evaluation where escalation is warranted
 """
 
 _FALLBACK_TEMPLATES: dict[tuple[str, str], list[str]] = {
@@ -77,8 +125,55 @@ _DISCLAIMER = (
 )
 
 
+# Stored labels are not consistent -- a record carries whichever vocabulary the model
+# that wrote it used, and an engineer override always writes ATC-20 terms. Looking a
+# raw label up against a phase-keyed table therefore missed on any mismatch and
+# silently dropped the building to the generic three-line plan. Normalise through the
+# shared severity axis first, exactly as the portal does when it renders the label.
+_SEVERITY_BY_LABEL = {
+    "low": "safe", "safe": "safe",
+    "moderate": "restricted", "restricted": "restricted",
+    "high": "unsafe", "unsafe": "unsafe",
+}
+
+_LABEL_BY_PHASE = {
+    "pre": {"safe": "low", "restricted": "moderate", "unsafe": "high"},
+    "post": {"safe": "SAFE", "restricted": "RESTRICTED", "unsafe": "UNSAFE"},
+}
+
+
+def _canonical_label(phase: str, label: str) -> str | None:
+    """The label rewritten into the vocabulary its phase actually uses."""
+    severity = _SEVERITY_BY_LABEL.get((label or "").strip().lower())
+    if severity is None:
+        return None
+    return _LABEL_BY_PHASE[phase][severity]
+
+
+def _violates_protocol(phase: str, label: str, items: list[str]) -> str | None:
+    """Reject a plan that contradicts the governing protocol.
+
+    A generated plan is advice an inspector may act on, so a wrong placard is worse
+    than no Gemini plan at all -- the device's protocol template is always available
+    to fall back to.
+    """
+    text = " ".join(items).lower()
+    if phase == "post":
+        colour = _PLACARD[label][0].lower()
+        if colour not in text:
+            return f"missing the required {colour.upper()} ATC-20 placard"
+        wrong = [c for c in ("green", "yellow", "red") if c != colour and f"{c} atc-20" in text]
+        if wrong:
+            return f"names a {wrong[0].upper()} placard alongside the required {colour.upper()}"
+        if label == "UNSAFE" and ("may resume" in text or "resume normal occupancy" in text):
+            return "permits re-occupancy of an UNSAFE building"
+    elif "placard" in text:
+        return "posts an ATC-20 placard for a pre-earthquake screening"
+    return None
+
+
 def _fallback(phase: str, label: str) -> list[str]:
-    key = (phase, label)
+    key = (phase, _canonical_label(phase, label) or label)
     items = _FALLBACK_TEMPLATES.get(key)
     if items is None:
         return [
@@ -103,6 +198,15 @@ def _try_gemini(phase: str, label: str, confidence: float, building: dict[str, A
 
     model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
+    if phase == "post":
+        colour, posting, meaning = _PLACARD[label]
+        rules = _POST_RULES.format(
+            protocol=_PROTOCOL["post"], label=label, colour=colour,
+            posting=posting, meaning=meaning,
+        )
+    else:
+        rules = _PRE_RULES.format(protocol=_PROTOCOL["pre"], label=label)
+
     context = (
         f"Phase: {phase}-earthquake. "
         f"AI-classified label: {label}. "
@@ -113,12 +217,18 @@ def _try_gemini(phase: str, label: str, confidence: float, building: dict[str, A
         f"Stories: {building.get('number_of_stories')}. "
         f"Use: {building.get('building_use')}."
     )
+    site = _site_context(building)
+    if site:
+        context = f"{context} {site}"
 
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model=model_name,
-            contents=f"{_PROMPT_SYSTEM}\n\nContext:\n{context}\n\nProduce the recommendations now.",
+            contents=(
+                f"{_PROMPT_BASE}\n{rules}\nContext:\n{context}\n\n"
+                "Produce the recommendations now."
+            ),
         )
         text = (response.text or "").strip()
     except Exception as exc:
@@ -128,9 +238,33 @@ def _try_gemini(phase: str, label: str, confidence: float, building: dict[str, A
     items = _parse_numbered_list(text)
     if not items:
         return None
+
+    breach = _violates_protocol(phase, label, items)
+    if breach:
+        logger.warning(
+            "Discarding Gemini plan for a %s/%s assessment: it %s. Using the protocol template.",
+            phase, label, breach,
+        )
+        return None
+
     if _DISCLAIMER not in " ".join(items):
         items.append(_DISCLAIMER)
     return items
+
+
+def _site_context(building: dict[str, Any]) -> str:
+    """Site factors the screening actually turns on, when the record carries them."""
+    bits = []
+    soil = building.get("soil_classification")
+    if soil:
+        bits.append(f"Site soil class: {soil}.")
+    fault = building.get("distance_to_fault_km")
+    if isinstance(fault, (int, float)):
+        bits.append(f"Distance to nearest mapped fault: {fault:.1f} km.")
+    system = building.get("structural_system")
+    if system:
+        bits.append(f"Structural system: {system}.")
+    return " ".join(bits)
 
 
 def _parse_numbered_list(text: str) -> list[str]:
@@ -161,10 +295,18 @@ def generate_action_plan(
     building: dict[str, Any],
 ) -> dict[str, Any]:
     """Return ``{"recommendations": [...], "generated_by": "gemini"|"template-fallback"}``."""
-    gemini_items = _try_gemini(phase, label, confidence, building)
+    # Normalise once, up front: everything downstream keys off the phase's own
+    # vocabulary, and an ATC-20 label arriving on a pre-earthquake record (or the
+    # reverse) would otherwise miss both the placard table and the templates.
+    canonical = _canonical_label(phase, label)
+    if canonical is None:
+        logger.warning("Unrecognised classification %r for a %s assessment.", label, phase)
+        return {"recommendations": _fallback(phase, label), "generated_by": "template-fallback"}
+
+    gemini_items = _try_gemini(phase, canonical, confidence, building)
     if gemini_items:
         return {"recommendations": gemini_items, "generated_by": "gemini"}
-    return {"recommendations": _fallback(phase, label), "generated_by": "template-fallback"}
+    return {"recommendations": _fallback(phase, canonical), "generated_by": "template-fallback"}
 
 
 __all__ = ["generate_action_plan"]
