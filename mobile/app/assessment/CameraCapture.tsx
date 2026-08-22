@@ -70,10 +70,20 @@ export default function CameraCapture({ visible, onCancel, onCaptured }: CameraC
     }
   };
 
-  const handleAccept = () => {
-    if (!preview) return;
-    onCaptured({ ...preview, id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}` });
-    setPreview(null);
+  const handleAccept = async () => {
+    if (!preview || busy) return;
+    setBusy(true);
+    try {
+      const compact = await compressForUpload(preview);
+      onCaptured({ ...compact, id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}` });
+      setPreview(null);
+    } catch {
+      // Compression is an optimization, never a reason to lose the capture.
+      onCaptured({ ...preview, id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}` });
+      setPreview(null);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleRetake = () => {
@@ -148,6 +158,43 @@ export default function CameraCapture({ visible, onCancel, onCaptured }: CameraC
       )}
     </Modal>
   );
+}
+
+// ---------- Upload-size reduction ----------
+
+/**
+ * Shrink an accepted photo before it enters the outbox.
+ *
+ * Phones capture at 12 MP and ~5 MB. Eight of those is roughly 40 MB per
+ * assessment over cellular data, which made sync painfully slow in the field.
+ * Nothing downstream needs that: the model resizes to 224 px, and the portal
+ * shows the photo for human review. A 1600 px long side keeps crack detail
+ * legible at roughly a tenth of the bytes.
+ *
+ * Deliberately runs *after* analyzeQuality, so the resolution and blur gates
+ * still judge the original capture rather than this reduced copy.
+ */
+const UPLOAD_LONG_SIDE = 1600;
+
+type PhotoDraft = Omit<CapturedPhoto, 'id'>;
+
+async function compressForUpload(photo: PhotoDraft): Promise<PhotoDraft> {
+  const longest = Math.max(photo.width, photo.height);
+  if (longest <= UPLOAD_LONG_SIDE) return photo;
+
+  const landscape = photo.width >= photo.height;
+  const result = await ImageManipulator.manipulateAsync(
+    photo.uri,
+    [landscape ? { resize: { width: UPLOAD_LONG_SIDE } } : { resize: { height: UPLOAD_LONG_SIDE } }],
+    { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG },
+  );
+
+  return {
+    ...photo,
+    uri: result.uri,
+    width: result.width ?? photo.width,
+    height: result.height ?? photo.height,
+  };
 }
 
 // ---------- Photo quality analysis ----------
