@@ -1,5 +1,6 @@
 import { cn } from '../../lib/cn';
 import {
+  displayLabel,
   REVIEW_THRESHOLD,
   SEVERITY_DOT,
   SEVERITY_MEANING,
@@ -13,17 +14,20 @@ import {
 
 export function ClassificationBadge({
   label,
+  phase,
   size = 'md',
   showMeaning = false,
   className,
 }: {
   label: string | null | undefined;
+  /** Renders the label in this phase's framework vocabulary. */
+  phase?: string | null;
   size?: 'sm' | 'md' | 'lg';
   showMeaning?: boolean;
   className?: string;
 }) {
   const severity = severityOf(label);
-  const text = label ? label.toUpperCase() : 'UNCLASSIFIED';
+  const text = displayLabel(label, phase);
 
   return (
     <span

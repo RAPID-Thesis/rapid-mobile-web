@@ -1,5 +1,6 @@
 import type { Assessment, Building } from '../types';
 import { formatPercent } from './formatPercent';
+import { displayLabel } from './severity';
 import { APP_NAME } from './branding';
 
 /**
@@ -96,7 +97,10 @@ export async function downloadAssessmentReport(
   y += LINE;
 
   // --- Classification callout ----------------------------------------------
-  const classLabel = assessment.override_classification ?? assessment.ai_fused_label ?? 'Pending';
+  const rawClassLabel = assessment.override_classification ?? assessment.ai_fused_label;
+  // Same vocabulary the portal shows, so a printed record cannot disagree with
+  // the screen it was issued from.
+  const classLabel = rawClassLabel ? displayLabel(rawClassLabel, assessment.phase) : 'PENDING';
   const overridden = Boolean(assessment.override_classification);
   ensureSpace(64);
   y += 8;
@@ -105,7 +109,7 @@ export async function downloadAssessmentReport(
   doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(MUTED);
   doc.text(overridden ? 'ENGINEER DETERMINATION' : 'AI CLASSIFICATION', MARGIN + 14, y + 18);
   doc.setFont('helvetica', 'bold').setFontSize(18).setTextColor(INK);
-  doc.text(String(classLabel).toUpperCase(), MARGIN + 14, y + 42);
+  doc.text(classLabel, MARGIN + 14, y + 42);
   if (assessment.ai_fused_confidence != null) {
     doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(MUTED);
     doc.text(
@@ -138,7 +142,7 @@ export async function downloadAssessmentReport(
   if (assessment.ai_image_label) {
     assessmentRows.push({
       label: 'Image branch',
-      value: `${assessment.ai_image_label}${
+      value: `${displayLabel(assessment.ai_image_label, assessment.phase)}${
         assessment.ai_image_confidence != null
           ? ` (${formatPercent(assessment.ai_image_confidence)})`
           : ''
@@ -148,7 +152,7 @@ export async function downloadAssessmentReport(
   if (assessment.ai_tabular_label) {
     assessmentRows.push({
       label: 'Structural branch',
-      value: `${assessment.ai_tabular_label}${
+      value: `${displayLabel(assessment.ai_tabular_label, assessment.phase)}${
         assessment.ai_tabular_confidence != null
           ? ` (${formatPercent(assessment.ai_tabular_confidence)})`
           : ''
@@ -166,7 +170,7 @@ export async function downloadAssessmentReport(
   if (overridden) {
     assessmentRows.push({
       label: 'Engineer override',
-      value: `${assessment.override_classification} — ${
+      value: `${displayLabel(assessment.override_classification, assessment.phase)} — ${
         assessment.review_justification ?? 'No justification recorded.'
       }`,
     });

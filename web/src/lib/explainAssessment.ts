@@ -1,5 +1,5 @@
 import type { Assessment, Building } from '../types';
-import { REVIEW_THRESHOLD, severityOf, type Severity } from './severity';
+import { displayLabel, REVIEW_THRESHOLD, severityOf, type Severity } from './severity';
 
 /* ============================================================================
    Why did the model say that?
@@ -237,13 +237,13 @@ export function explainAssessment(
   // --- Headline -----------------------------------------------------------
   let headline: string;
   if (assessment.override_classification) {
-    headline = `An engineer set this to ${assessment.override_classification}, overriding the model.`;
+    headline = `An engineer set this to ${displayLabel(assessment.override_classification, assessment.phase)}, overriding the model.`;
   } else if (agreement === 'agree') {
-    headline = `Both models independently reached ${finalLabel ?? 'the same result'}.`;
+    headline = `Both models independently reached ${finalLabel ? displayLabel(finalLabel, assessment.phase) : 'the same result'}.`;
   } else if (agreement === 'conflict') {
-    headline = `The models disagreed; weighting resolved this to ${finalLabel ?? 'the fused result'}.`;
+    headline = `The models disagreed; weighting resolved this to ${finalLabel ? displayLabel(finalLabel, assessment.phase) : 'the fused result'}.`;
   } else if (agreement === 'single') {
-    headline = `Based on a single branch, this reads as ${finalLabel ?? 'unclassified'}.`;
+    headline = `Based on a single branch, this reads as ${finalLabel ? displayLabel(finalLabel, assessment.phase) : 'unclassified'}.`;
   } else {
     headline = 'This assessment has not been classified.';
   }

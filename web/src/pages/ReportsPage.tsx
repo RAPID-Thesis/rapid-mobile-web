@@ -207,7 +207,7 @@ export default function ReportsPage() {
                         <PhaseBadge phase={a.phase} />
                       </td>
                       <td className="px-4 py-2.5">
-                        <ClassificationBadge label={label} size="sm" />
+                        <ClassificationBadge label={label} phase={a.phase} size="sm" />
                       </td>
                       <td className="tabular px-4 py-2.5 text-xs text-ink-muted">
                         {a.reviewed_at ? new Date(a.reviewed_at).toLocaleDateString() : '—'}

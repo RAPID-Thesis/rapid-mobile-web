@@ -251,7 +251,7 @@ export default function AssessmentsPage() {
                             {b?.barangay ?? b?.address ?? 'Location not recorded'}
                           </p>
                         </div>
-                        <ClassificationBadge label={a.ai_fused_label} size="sm" />
+                        <ClassificationBadge label={a.ai_fused_label} phase={a.phase} size="sm" />
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <PhaseBadge phase={a.phase} />
@@ -308,7 +308,7 @@ function Row({
         <PhaseBadge phase={a.phase} />
       </td>
       <td className="px-4 py-2.5">
-        <ClassificationBadge label={a.ai_fused_label} size="sm" />
+        <ClassificationBadge label={a.ai_fused_label} phase={a.phase} size="sm" />
       </td>
       <td className="px-4 py-2.5">
         <ConfidenceMeter value={a.ai_fused_confidence} label={a.ai_fused_label} />

@@ -26,6 +26,46 @@ export function severityOf(label: string | null | undefined): Severity {
   return SEVERITY_BY_LABEL[label.trim().toLowerCase()] ?? 'unknown';
 }
 
+/**
+ * The framework vocabulary a label is *displayed* in.
+ *
+ * Stored labels are not consistent: a record can hold either vocabulary
+ * depending on which model wrote it and whether an engineer overrode it, so a
+ * pre-earthquake screening could surface as "SAFE" and a post-earthquake
+ * evaluation as "low". Severity is the shared axis, so display always routes
+ * through severityOf() and back out into the vocabulary the phase calls for.
+ */
+const PRE_LABELS: Record<Severity, string> = {
+  safe: 'LOW',
+  restricted: 'MODERATE',
+  unsafe: 'HIGH',
+  unknown: 'UNCLASSIFIED',
+};
+
+const POST_LABELS: Record<Severity, string> = {
+  safe: 'SAFE',
+  restricted: 'RESTRICTED',
+  unsafe: 'UNSAFE',
+  unknown: 'UNCLASSIFIED',
+};
+
+/**
+ * Render a stored classification in the vocabulary of its phase.
+ *
+ * With no phase the raw label is echoed rather than guessed at — inventing a
+ * framework for a record that has not declared one would be a worse error than
+ * showing what is actually stored.
+ */
+export function displayLabel(
+  label: string | null | undefined,
+  phase?: string | null,
+): string {
+  const severity = severityOf(label);
+  if (severity === 'unknown') return label ? label.toUpperCase() : 'UNCLASSIFIED';
+  if (!phase) return label!.toUpperCase();
+  return phase.toLowerCase().startsWith('post') ? POST_LABELS[severity] : PRE_LABELS[severity];
+}
+
 export const SEVERITY_STYLES: Record<Severity, string> = {
   safe: 'bg-safe-bg text-safe border-safe-line',
   restricted: 'bg-restricted-bg text-restricted border-restricted-line',

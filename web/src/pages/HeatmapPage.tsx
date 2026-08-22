@@ -13,7 +13,7 @@ import {
   type SjdmDistrict,
 } from '../constants/sjdmLocations';
 import type { Assessment, AssessmentPhase, Building } from '../types';
-import { Button, Card, ErrorState, PageHeader, Select } from '../components/ui';
+import { Button, Card, displayLabel, ErrorState, PageHeader, Select } from '../components/ui';
 import 'leaflet/dist/leaflet.css';
 
 /** San Jose del Monte, Bulacan — default map focus (users can still pan/zoom out). */
@@ -419,7 +419,7 @@ export default function HeatmapPage() {
                         <p className="text-xs text-ink-subtle">Brgy. {m.barangay}</p>
                         <p className="mt-1.5 text-xs">
                           <span className="font-semibold uppercase" style={{ color }}>
-                            {m.label}
+                            {displayLabel(m.label, m.phase)}
                           </span>{' '}
                           <span className="text-ink-subtle">
                             · {formatPercent(m.confidence, 0)} confidence

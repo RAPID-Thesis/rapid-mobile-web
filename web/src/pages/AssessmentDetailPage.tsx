@@ -26,6 +26,7 @@ import {
   Select,
   SEVERITY_MEANING,
   severityOf,
+  displayLabel,
   Skeleton,
   StatusBadge,
   Textarea,
@@ -324,14 +325,14 @@ export default function AssessmentDetailPage() {
             </p>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <span className={cn('text-2xl font-semibold tracking-tight', bandText)}>
-                {(finalLabel ?? 'Unclassified').toUpperCase()}
+                {displayLabel(finalLabel, assessment.phase)}
               </span>
               <span className="text-sm text-ink-muted">{SEVERITY_MEANING[severity]}</span>
             </div>
 
             {overridden && aiLabel && (
               <p className="mt-1 text-xs text-ink-muted">
-                Model originally returned <span className="font-medium">{aiLabel.toUpperCase()}</span>
+                Model originally returned <span className="font-medium">{displayLabel(aiLabel, assessment.phase)}</span>
                 {confidence != null && ` at ${formatPercent(confidence)} confidence`}.
               </p>
             )}
@@ -577,7 +578,7 @@ export default function AssessmentDetailPage() {
                         Classification overridden
                       </p>
                       <div className="mt-1.5">
-                        <ClassificationBadge label={assessment.override_classification} size="sm" />
+                        <ClassificationBadge label={assessment.override_classification} phase={assessment.phase} size="sm" />
                       </div>
                       {assessment.review_justification && (
                         <p className="mt-2 text-xs text-ink-muted">{assessment.review_justification}</p>
@@ -606,9 +607,12 @@ export default function AssessmentDetailPage() {
                         onChange={(e) => setOverrideClass(e.target.value)}
                       >
                         <option value="">Accept AI result</option>
-                        <option value="SAFE">Override → SAFE / Low</option>
-                        <option value="RESTRICTED">Override → RESTRICTED / Moderate</option>
-                        <option value="UNSAFE">Override → UNSAFE / High</option>
+                        {/* Stored in ATC-20 terms whichever phase this is; the
+                            wording follows the phase so the engineer picks from
+                            the framework they are actually working in. */}
+                        <option value="SAFE">Override → {displayLabel('SAFE', assessment.phase)}</option>
+                        <option value="RESTRICTED">Override → {displayLabel('RESTRICTED', assessment.phase)}</option>
+                        <option value="UNSAFE">Override → {displayLabel('UNSAFE', assessment.phase)}</option>
                       </Select>
                     )}
                   </Field>

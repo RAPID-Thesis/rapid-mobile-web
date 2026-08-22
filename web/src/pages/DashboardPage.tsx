@@ -339,7 +339,7 @@ export default function DashboardPage() {
                           </div>
                         </td>
                         <td className="px-4 py-2.5">
-                          <ClassificationBadge label={a.ai_fused_label} size="sm" />
+                          <ClassificationBadge label={a.ai_fused_label} phase={a.phase} size="sm" />
                         </td>
                         <td className="tabular px-4 py-2.5 text-right text-xs font-medium text-ink-muted">
                           {formatPercent(a.priority_score, 0)}
