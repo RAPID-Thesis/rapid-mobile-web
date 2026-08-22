@@ -217,6 +217,7 @@ export default function NewAssessmentScreen() {
   const [gpsRefreshing, setGpsRefreshing] = useState(false);
   const [gpsCanAskAgain, setGpsCanAskAgain] = useState(true);
   const [gpsBypassed, setGpsBypassed] = useState(false);
+  const [mlError, setMlError] = useState<string | null>(null);
   const [fieldResult, setFieldResult] = useState<{
     prediction: LocalPredictionResult;
     actionPlan: LocalActionPlanResult;
@@ -302,6 +303,7 @@ export default function NewAssessmentScreen() {
     let cancelled = false;
     void (async () => {
       setPredictingMl(true);
+      setMlError(null);
       try {
         const prediction = await predictOnDevice({
           phase,
@@ -324,6 +326,15 @@ export default function NewAssessmentScreen() {
         );
         if (!cancelled) {
           setFieldResult({ prediction, actionPlan, priorityScore });
+        }
+      } catch (e) {
+        // Previously this was try/finally with no catch, so anything thrown here
+        // escaped as an unhandled promise rejection -- which crashes the app in a
+        // release build. The estimate is a preview; failing to produce one must
+        // never take the wizard down with it, and the inspector can still save.
+        if (!cancelled) {
+          setFieldResult(null);
+          setMlError(e instanceof Error ? e.message : 'Could not produce an estimate.');
         }
       } finally {
         if (!cancelled) setPredictingMl(false);
@@ -794,6 +805,16 @@ export default function NewAssessmentScreen() {
               <View style={styles.mlLoadingRow}>
                 <ActivityIndicator size="small" color={WizardTheme.colors.primary} />
                 <Text style={styles.mlLoadingText}>Running on-device ML…</Text>
+              </View>
+            ) : null}
+
+            {mlError ? (
+              <View style={styles.mlErrorCard}>
+                <Text style={styles.mlErrorTitle}>Estimate unavailable</Text>
+                <Text style={styles.mlErrorText}>
+                  {mlError} You can still save this assessment — the classification will be
+                  produced when it syncs.
+                </Text>
               </View>
             ) : null}
 
@@ -1303,6 +1324,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 6,
     lineHeight: 22,
+  },
+  mlErrorCard: {
+    backgroundColor: Colors.restrictedBg,
+    borderColor: Colors.restrictedBorder,
+    borderWidth: 1,
+    borderRadius: WizardTheme.radius.md,
+    padding: WizardTheme.spacing.md,
+    marginBottom: WizardTheme.spacing.sm,
+  },
+  mlErrorTitle: {
+    fontSize: FontSize.sm,
+    color: Colors.restricted,
+    marginBottom: 4,
+  },
+  mlErrorText: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    lineHeight: 18,
   },
   estimateCard: {
     backgroundColor: WizardTheme.colors.card,

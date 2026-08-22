@@ -16,6 +16,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { SyncOnReconnect } from '../components/SyncOnReconnect';
 import PasswordRecoveryLinkHandler from '../components/PasswordRecoveryLinkHandler';
 import { initOnDeviceMl } from '../services/onDeviceMl';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -53,34 +54,36 @@ export default function RootLayout() {
   const interLoaded = Boolean(fontsLoaded && !fontError);
 
   return (
-    <AuthProvider>
-      <SyncOnReconnect />
-      <PasswordRecoveryLinkHandler />
-      <TypographyProvider value={{ interLoaded }}>
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: Colors.primary },
-            headerTintColor: '#FFFFFF',
-            headerTitleStyle: {
-              fontWeight: interLoaded ? undefined : '700',
-              fontFamily: interLoaded ? Typography.fontFamily.bold : undefined,
-            },
-            contentStyle: { backgroundColor: Colors.background },
-          }}
-        >
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="assessment/new"
-            options={{ title: 'New Assessment', presentation: 'modal' }}
-          />
-          <Stack.Screen
-            name="assessment/[id]"
-            options={{ title: 'Assessment Detail' }}
-          />
-        </Stack>
-      </TypographyProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <SyncOnReconnect />
+        <PasswordRecoveryLinkHandler />
+        <TypographyProvider value={{ interLoaded }}>
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: Colors.primary },
+              headerTintColor: '#FFFFFF',
+              headerTitleStyle: {
+                fontWeight: interLoaded ? undefined : '700',
+                fontFamily: interLoaded ? Typography.fontFamily.bold : undefined,
+              },
+              contentStyle: { backgroundColor: Colors.background },
+            }}
+          >
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="assessment/new"
+              options={{ title: 'New Assessment', presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="assessment/[id]"
+              options={{ title: 'Assessment Detail' }}
+            />
+          </Stack>
+        </TypographyProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

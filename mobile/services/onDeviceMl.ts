@@ -82,9 +82,18 @@ export async function predictOnDevice(params: PredictOnDeviceParams): Promise<Lo
       longitude: params.longitude,
     });
 
+    // Sequential on purpose: decoding photos in parallel multiplies peak native
+    // memory by the photo count, and eight at once is enough to get the process
+    // killed. A photo that will not decode is skipped rather than failing the
+    // whole prediction -- losing one image is a smaller loss than losing the
+    // image branch entirely.
     const rgbBatch: Uint8Array[] = [];
     for (const uri of params.photoUris) {
-      rgbBatch.push(await preprocessPhotoForModel(uri));
+      try {
+        rgbBatch.push(await preprocessPhotoForModel(uri));
+      } catch (e) {
+        console.warn('[ML] skipping unreadable photo:', e);
+      }
     }
 
     const imageBranch =
