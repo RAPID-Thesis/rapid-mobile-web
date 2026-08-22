@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { downloadAssessmentReport } from '../lib/assessmentReport';
-import type { Assessment, Building } from '../types';
+import { cn } from '../lib/cn';
+import type { Assessment, AssessmentPhase, Building } from '../types';
 import {
   Button,
   Card,
@@ -15,8 +16,17 @@ import {
 } from '../components/ui';
 import { ReportsIcon } from '../components/ui/icons';
 
+type PhaseFilter = AssessmentPhase | 'all';
+
+const PHASE_TABS: { value: PhaseFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'pre-earthquake', label: 'Pre-earthquake' },
+  { value: 'post-earthquake', label: 'Post-earthquake' },
+];
+
 export default function ReportsPage() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +67,19 @@ export default function ReportsPage() {
     };
   }, [nonce]);
 
+  const phase = (params.get('phase') as PhaseFilter | null) ?? 'all';
+  const setPhase = (next: PhaseFilter) => {
+    const p = new URLSearchParams(params);
+    if (next === 'all') p.delete('phase');
+    else p.set('phase', next);
+    setParams(p, { replace: true });
+  };
+
+  const visible = useMemo(
+    () => (phase === 'all' ? assessments : assessments.filter((a) => a.phase === phase)),
+    [assessments, phase],
+  );
+
   async function handlePdf(assessment: Assessment, building: Building | undefined) {
     await downloadAssessmentReport(assessment, building ?? null);
     if (assessment.status === 'reviewed') {
@@ -83,7 +106,35 @@ export default function ReportsPage() {
         description={
           loading
             ? 'Loading…'
-            : `${assessments.length} reviewed assessment${assessments.length === 1 ? '' : 's'} ready to issue`
+            : `${visible.length} reviewed assessment${visible.length === 1 ? '' : 's'} ready to issue`
+        }
+        actions={
+          <div
+            className="inline-flex rounded-control border border-line-strong bg-surface p-0.5"
+            role="tablist"
+            aria-label="Filter by assessment phase"
+          >
+            {PHASE_TABS.map((t) => {
+              const active = phase === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setPhase(t.value)}
+                  className={cn(
+                    'rounded-[5px] px-3 py-1.5 text-xs font-medium transition-colors',
+                    active
+                      ? 'bg-brand-700 text-white'
+                      : 'text-ink-muted hover:bg-surface-raised hover:text-ink',
+                  )}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         }
       />
 
@@ -98,17 +149,33 @@ export default function ReportsPage() {
       <Card className="overflow-hidden">
         {loading ? (
           <SkeletonRows rows={6} />
-        ) : assessments.length === 0 ? (
-          <EmptyState
-            icon={<ReportsIcon className="h-8 w-8" />}
-            title="No reports ready"
-            description="A report becomes available once an engineer has reviewed the assessment."
-            action={
-              <Button size="sm" variant="secondary" onClick={() => navigate('/assessments?status=pending-review')}>
-                View assessments awaiting review
-              </Button>
-            }
-          />
+        ) : visible.length === 0 ? (
+          // A phase with nothing in it is a different situation from having no
+          // reviewed work at all, so don't tell the user to go review something
+          // when the other phase is already full of issued records.
+          assessments.length > 0 ? (
+            <EmptyState
+              icon={<ReportsIcon className="h-8 w-8" />}
+              title="No reports for this phase"
+              description="No reviewed assessments have been recorded for the selected phase yet."
+              action={
+                <Button size="sm" variant="secondary" onClick={() => setPhase('all')}>
+                  Show all phases
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<ReportsIcon className="h-8 w-8" />}
+              title="No reports ready"
+              description="A report becomes available once an engineer has reviewed the assessment."
+              action={
+                <Button size="sm" variant="secondary" onClick={() => navigate('/assessments?status=pending-review')}>
+                  View assessments awaiting review
+                </Button>
+              }
+            />
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
@@ -123,7 +190,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {assessments.map((a) => {
+                {visible.map((a) => {
                   const building = buildings.find((b) => b.id === a.building_id);
                   const label = a.override_classification ?? a.ai_fused_label;
                   const issued = a.status === 'report-generated';
