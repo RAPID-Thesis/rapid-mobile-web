@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 import { classesForPhase, phaseKey } from './constants';
 import type { BranchPrediction } from './fusion';
@@ -25,12 +25,33 @@ function getOrt(): OrtModule | null {
     ortMod = null;
     return null;
   }
+  // `onnxruntime-react-native` calls `NativeModules.Onnxruntime.install()` at module
+  // scope. When the native module is not linked that throws a TypeError *inside*
+  // metroRequire, and Metro reports an outermost require failure through
+  // `ErrorUtils.reportFatalError` rather than rethrowing -- which crashes the app
+  // instead of unwinding into the catch below. Probing the native module the same way
+  // the library does keeps a missing native build on the heuristic fallback path.
+  if (nativeOrtModule() == null && !ortApiInstalled()) {
+    console.warn('[ML] Onnxruntime native module not linked; ONNX branch unavailable');
+    ortMod = null;
+    return null;
+  }
   try {
     ortMod = require('onnxruntime-react-native') as OrtModule;
-  } catch {
+  } catch (e) {
+    console.warn('[ML] failed to load onnxruntime-react-native:', e);
     ortMod = null;
   }
   return ortMod;
+}
+
+function nativeOrtModule(): unknown {
+  return (NativeModules as Record<string, unknown>).Onnxruntime ?? null;
+}
+
+/** The library skips `install()` when the JSI binding is already on the global. */
+function ortApiInstalled(): boolean {
+  return typeof (globalThis as { OrtApi?: unknown }).OrtApi !== 'undefined';
 }
 
 const sessionCache: Partial<Record<'pre' | 'post', Awaited<ReturnType<OrtModule['InferenceSession']['create']>>>> =
