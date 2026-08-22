@@ -42,10 +42,34 @@ function useFilters() {
   };
 }
 
+/**
+ * The two phases score the same severity under different vocabularies: FEMA P-154
+ * says low/moderate/high, ATC-20 says SAFE/RESTRICTED/UNSAFE. The filter itself is
+ * severity-keyed and works for both, so only the wording follows the phase — with
+ * both spellings shown when no phase is chosen.
+ */
+function classificationNames(phase: AssessmentPhase | ''): Record<
+  'safe' | 'restricted' | 'unsafe',
+  string
+> {
+  if (phase === 'pre-earthquake') {
+    return { safe: 'Low', restricted: 'Moderate', unsafe: 'High' };
+  }
+  if (phase === 'post-earthquake') {
+    return { safe: 'Safe', restricted: 'Restricted', unsafe: 'Unsafe' };
+  }
+  return {
+    safe: 'Low / Safe',
+    restricted: 'Moderate / Restricted',
+    unsafe: 'High / Unsafe',
+  };
+}
+
 export default function AssessmentsPage() {
   const navigate = useNavigate();
   const { assessments, buildingById, loading, error, reload } = useAssessmentData();
   const f = useFilters();
+  const classNames = classificationNames(f.phase);
 
   const filtered = useMemo(() => {
     let result = [...assessments];
@@ -106,7 +130,7 @@ export default function AssessmentsPage() {
         <div className="flex flex-wrap items-center gap-2 p-3">
           <SearchInput
             className="w-full sm:w-64"
-            placeholder="Building code, address, barangay…"
+            placeholder="Code, address or barangay…"
             aria-label="Search assessments"
             value={f.q}
             onChange={(e) => f.set('q', e.target.value)}
@@ -118,8 +142,8 @@ export default function AssessmentsPage() {
             onChange={(e) => f.set('phase', e.target.value)}
           >
             <option value="">All phases</option>
-            <option value="pre-earthquake">Pre-quake</option>
-            <option value="post-earthquake">Post-quake</option>
+            <option value="pre-earthquake">Pre-earthquake</option>
+            <option value="post-earthquake">Post-earthquake</option>
           </Select>
           <Select
             className="w-auto"
@@ -128,9 +152,9 @@ export default function AssessmentsPage() {
             onChange={(e) => f.set('class', e.target.value)}
           >
             <option value="">All classifications</option>
-            <option value="unsafe">Unsafe</option>
-            <option value="restricted">Restricted</option>
-            <option value="safe">Safe</option>
+            <option value="unsafe">{classNames.unsafe}</option>
+            <option value="restricted">{classNames.restricted}</option>
+            <option value="safe">{classNames.safe}</option>
           </Select>
           <Select
             className="w-auto"

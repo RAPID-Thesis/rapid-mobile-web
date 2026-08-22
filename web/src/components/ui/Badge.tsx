@@ -65,7 +65,7 @@ export function PhaseBadge({ phase, className }: { phase: string | null; classNa
   const post = phase === 'post-earthquake';
   return (
     <Badge tone="neutral" className={className}>
-      {post ? 'Post-quake' : 'Pre-quake'}
+      {post ? 'Post-earthquake' : 'Pre-earthquake'}
     </Badge>
   );
 }

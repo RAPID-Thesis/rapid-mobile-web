@@ -266,8 +266,8 @@ export default function HeatmapPage() {
                 onChange={(e) => setPhaseFilter(e.target.value as AssessmentPhase | '')}
               >
                 <option value="">All phases</option>
-                <option value="pre-earthquake">Pre-quake</option>
-                <option value="post-earthquake">Post-quake</option>
+                <option value="pre-earthquake">Pre-earthquake</option>
+                <option value="post-earthquake">Post-earthquake</option>
               </Select>
             </div>
 
@@ -427,7 +427,7 @@ export default function HeatmapPage() {
                         </p>
                         <p className="text-2xs text-ink-subtle">
                           Priority {formatPercent(m.priority, 0)} ·{' '}
-                          {m.phase === 'pre-earthquake' ? 'Pre-quake' : 'Post-quake'}
+                          {m.phase === 'pre-earthquake' ? 'Pre-earthquake' : 'Post-earthquake'}
                         </p>
                         <button
                           type="button"

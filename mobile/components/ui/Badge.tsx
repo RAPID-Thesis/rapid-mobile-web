@@ -34,8 +34,12 @@ export const SEVERITY_MEANING: Record<Severity, string> = {
   unknown: 'Not yet classified',
 };
 
-/** Below this the prediction reads as unresolved rather than merely weaker. */
-export const REVIEW_THRESHOLD = 0.7;
+/**
+ * Below this the prediction reads as unresolved rather than merely weaker.
+ * Must stay in step with web/src/lib/severity.ts -- the two surfaces should not
+ * disagree about which assessments need an engineer.
+ */
+export const REVIEW_THRESHOLD = 0.5;
 
 const SEVERITY_COLORS: Record<Severity, { fg: string; bg: string; border: string }> = {
   safe: { fg: Colors.safe, bg: Colors.safeBg, border: Colors.safeBorder },

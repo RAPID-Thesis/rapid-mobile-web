@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { signedUrlsForImages } from '../lib/signedImageUrls';
-import { openPrintableAssessmentReport } from '../lib/assessmentReport';
+import { downloadAssessmentReport } from '../lib/assessmentReport';
 import { useAuth } from '../context/AuthContext';
 import { formatPercent } from '../lib/formatPercent';
+import { explainAssessment, type Driver } from '../lib/explainAssessment';
 import { cn } from '../lib/cn';
 import type { Assessment, AssessmentImage, Building } from '../types';
 import {
@@ -31,6 +32,28 @@ import {
 } from '../components/ui';
 
 /* -------------------------------------------------------------------------- */
+
+/** One reason, marked by whether it pushed severity up or down. */
+function DriverRow({ driver }: { driver: Driver }) {
+  const mark = {
+    raises: { glyph: '▲', tone: 'text-unsafe', label: 'increases severity' },
+    lowers: { glyph: '▼', tone: 'text-safe', label: 'decreases severity' },
+    neutral: { glyph: '■', tone: 'text-ink-subtle', label: 'neutral factor' },
+  }[driver.direction];
+
+  return (
+    <li className="flex gap-2.5 py-1.5">
+      <span className={cn('mt-0.5 text-2xs leading-none', mark.tone)} aria-hidden="true">
+        {mark.glyph}
+      </span>
+      <span className="sr-only">{mark.label}:</span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-ink">{driver.label}</p>
+        <p className="text-2xs text-ink-muted">{driver.detail}</p>
+      </div>
+    </li>
+  );
+}
 
 /** Horizontal probability row used for the per-branch model breakdown. */
 function ProbabilityRow({ label, value }: { label: string; value: number }) {
@@ -282,9 +305,9 @@ export default function AssessmentDetailPage() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => openPrintableAssessmentReport(assessment, building)}
+              onClick={() => void downloadAssessmentReport(assessment, building)}
             >
-              Generate report
+              Download PDF
             </Button>
           </>
         }
@@ -408,6 +431,55 @@ export default function AssessmentDetailPage() {
           )}
 
           <StructuralData data={structural} />
+
+          {(() => {
+            const why = explainAssessment(assessment, building);
+            if (why.agreement === 'none') return null;
+            return (
+              <Card>
+                <CardHeader
+                  title="Why this classification"
+                  description="The reasoning behind the result, in the terms an engineer would check."
+                />
+                <CardBody className="space-y-4">
+                  <p className="text-sm font-medium text-ink">{why.headline}</p>
+
+                  <div
+                    className={cn(
+                      'rounded-control border px-3 py-2 text-2xs',
+                      why.agreement === 'conflict'
+                        ? 'border-restricted-line bg-restricted-bg text-restricted'
+                        : 'border-line bg-surface-raised text-ink-muted',
+                    )}
+                  >
+                    {why.agreementNote}
+                  </div>
+
+                  <div>
+                    <h3 className="mb-1 text-2xs font-semibold uppercase tracking-wider text-ink-subtle">
+                      Contributing factors
+                    </h3>
+                    <ul className="divide-y divide-line">
+                      {why.drivers.map((d) => (
+                        <DriverRow key={d.label} driver={d} />
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div
+                    className={cn(
+                      'rounded-control border px-3 py-2 text-2xs',
+                      why.needsReview
+                        ? 'border-restricted-line bg-restricted-bg text-restricted'
+                        : 'border-line bg-surface-raised text-ink-muted',
+                    )}
+                  >
+                    {why.confidenceNote}
+                  </div>
+                </CardBody>
+              </Card>
+            );
+          })()}
 
           {(assessment.ai_image_probabilities != null || assessment.ai_feature_importance != null) && (
             <Card>

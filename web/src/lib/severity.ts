@@ -3,8 +3,8 @@
    ----------------------------------------------------------------------------
    The two label sets are the same severity signal under different frameworks:
 
-     FEMA P-154 (pre-quake)   low       moderate     high
-     ATC-20     (post-quake)  SAFE      RESTRICTED   UNSAFE
+     FEMA P-154 (pre-earthquake)   low       moderate     high
+     ATC-20     (post-earthquake)  SAFE      RESTRICTED   UNSAFE
 
    Kept in lib/ rather than alongside the components so the constants can be
    imported by non-component modules without breaking React fast refresh.
@@ -50,8 +50,13 @@ export const SEVERITY_MEANING: Record<Severity, string> = {
 
 /**
  * Below this, a prediction is shown as unresolved rather than merely
- * lower-confidence. Cross-validation put UNSAFE recall at 1-in-9, so a
- * confident-looking badge on a weak prediction would overstate what the model
- * knows. Engineer review is the backstop and the UI has to route work into it.
+ * lower-confidence, routing the record to engineer review.
+ *
+ * Set at 0.5 rather than 0.7. The earlier value dated from when cross-validation
+ * put `high` recall at 1-in-9, and flagging everything under 70% was a reasonable
+ * hedge against a model that could not see severe damage. Retraining moved that
+ * recall to 0.838 [0.69-0.92] and macro F1 to 0.837, so a 60%-confident call is
+ * now usually right and flagging it buried the genuinely uncertain cases in
+ * noise. A "needs review" that fires on most records stops being a signal.
  */
-export const REVIEW_THRESHOLD = 0.7;
+export const REVIEW_THRESHOLD = 0.5;
