@@ -2,6 +2,10 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 import { Platform } from 'react-native';
 
+// `.json` is a Metro *source* extension, so this import yields the parsed object
+// directly rather than an asset handle -- no file IO needed to read it.
+import bundledManifest from '../../assets/models/mobile_manifest.json';
+
 export interface RfBranchManifest {
   file: string;
   classifier_only?: boolean;
@@ -23,16 +27,31 @@ export interface MobileManifest {
   post: { classes: string[]; resnet: { file: string }; rf: RfBranchManifest };
 }
 
-const MODEL_NAMES = [
-  'resnet50_pre.tflite',
-  'resnet50_post.tflite',
-  'rf_pre.onnx',
-  'rf_post.onnx',
-] as const;
+/**
+ * Each model is require()d so Metro registers it as an asset and ships it in the
+ * APK with a resolvable id. This is the part that has to be static -- a computed
+ * path cannot be bundled, which is why deriving sibling paths from the manifest's
+ * location silently found nothing in release builds and every prediction fell
+ * back to the heuristic.
+ */
+const MODEL_MODULES: Record<string, number> = {
+  'resnet50_pre.tflite': require('../../assets/models/resnet50_pre.tflite'),
+  'resnet50_post.tflite': require('../../assets/models/resnet50_post.tflite'),
+  'rf_pre.onnx': require('../../assets/models/rf_pre.onnx'),
+  'rf_post.onnx': require('../../assets/models/rf_post.onnx'),
+};
+
+const MODEL_NAMES = Object.keys(MODEL_MODULES) as readonly string[];
 
 let cacheDir: string | null = null;
 let manifest: MobileManifest | null = null;
 let initPromise: Promise<boolean> | null = null;
+let loadError: string | null = null;
+
+/** Why on-device inference is unavailable, for surfacing instead of silently degrading. */
+export function getModelLoadError(): string | null {
+  return loadError;
+}
 
 export async function ensureModelsLoaded(): Promise<boolean> {
   if (initPromise) return initPromise;
@@ -43,24 +62,31 @@ export async function ensureModelsLoaded(): Promise<boolean> {
 async function initModels(): Promise<boolean> {
   const base = `${FileSystem.documentDirectory}rapid_ml/`;
   try {
+    loadError = null;
     await FileSystem.makeDirectoryAsync(base, { intermediates: true });
 
-    if (!(await cacheHasCompleteModels(base))) {
-      await tryStageFromAssetBundle(base);
+    const parsed = bundledManifest as unknown as MobileManifest;
+    if (parsed.bundled === false) {
+      loadError = 'Manifest says models are not bundled in this build.';
+      return false;
     }
 
-    const manifestPath = base + 'mobile_manifest.json';
-    const manifestInfo = await FileSystem.getInfoAsync(manifestPath);
-    if (!manifestInfo.exists) return false;
+    if (!(await cacheHasCompleteModels(base))) {
+      await stageBundledModels(base);
+    }
 
-    manifest = JSON.parse(await FileSystem.readAsStringAsync(manifestPath)) as MobileManifest;
-    if (manifest.bundled === false) return false;
-    if (!(await cacheHasCompleteModels(base))) return false;
+    const missing = await missingModels(base);
+    if (missing.length > 0) {
+      loadError = `Bundled model file(s) missing after staging: ${missing.join(', ')}`;
+      return false;
+    }
 
+    manifest = parsed;
     cacheDir = base;
     return true;
   } catch (e) {
-    console.warn('[ML] Model init failed:', e);
+    loadError = e instanceof Error ? e.message : String(e);
+    console.warn('[ML] Model init failed:', loadError);
     manifest = null;
     cacheDir = null;
     return false;
@@ -76,28 +102,33 @@ async function cacheHasCompleteModels(base: string): Promise<boolean> {
 }
 
 /**
- * After `export_mobile_models.py --copy-to-mobile`, model binaries live under
- * mobile/assets/models/. Metro bundles them via assetBundlePatterns; at runtime
- * we copy from the manifest asset's directory when sibling model files exist.
+ * Copy each bundled model out of the APK and into the document directory, because
+ * the TFLite and ONNX runtimes both need a real filesystem path rather than an
+ * asset handle.
+ *
+ * Staging is one-time: cacheHasCompleteModels() short-circuits it on later runs.
  */
-async function tryStageFromAssetBundle(base: string): Promise<void> {
-  const manifestAsset = Asset.fromModule(require('../../assets/models/mobile_manifest.json'));
-  await manifestAsset.downloadAsync();
-  const manifestSrc = manifestAsset.localUri ?? manifestAsset.uri;
-  if (!manifestSrc) return;
-
-  const parsed = JSON.parse(await FileSystem.readAsStringAsync(manifestSrc)) as MobileManifest;
-  await FileSystem.copyAsync({ from: manifestSrc, to: base + 'mobile_manifest.json' });
-  if (parsed.bundled === false) return;
-
-  const dir = manifestSrc.replace(/mobile_manifest\.json$/i, '');
+async function stageBundledModels(base: string): Promise<void> {
   for (const name of MODEL_NAMES) {
-    const src = dir + name;
-    const info = await FileSystem.getInfoAsync(src);
-    if (info.exists) {
-      await FileSystem.copyAsync({ from: src, to: base + name });
-    }
+    const target = base + name;
+    const existing = await FileSystem.getInfoAsync(target);
+    if (existing.exists && (existing.size ?? 0) >= 1024) continue;
+
+    const asset = Asset.fromModule(MODEL_MODULES[name]);
+    await asset.downloadAsync();
+    const src = asset.localUri ?? asset.uri;
+    if (!src) throw new Error(`Could not resolve bundled asset for ${name}`);
+    await FileSystem.copyAsync({ from: src, to: target });
   }
+}
+
+async function missingModels(base: string): Promise<string[]> {
+  const missing: string[] = [];
+  for (const name of MODEL_NAMES) {
+    const f = await FileSystem.getInfoAsync(base + name);
+    if (!f.exists || (f.size ?? 0) < 1024) missing.push(name);
+  }
+  return missing;
 }
 
 export function getMobileManifest(): MobileManifest | null {

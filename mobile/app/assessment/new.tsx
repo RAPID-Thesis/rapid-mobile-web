@@ -32,6 +32,7 @@ import {
   type LocalActionPlanResult,
 } from '../../services/localActionPlan';
 import { predictOnDevice } from '../../services/onDeviceMl';
+import { getModelLoadError } from '../../services/ml/modelLoader';
 import { formatPercent } from '../../utils/formatPercent';
 import { enqueueOutbox, processOutbox } from '../../services/outbox';
 import { type WizardAssessmentSyncInput } from '../../services/sync';
@@ -386,7 +387,9 @@ export default function NewAssessmentScreen() {
       setCapturedPhotos((prev) => prev.map((p) => (p.id === retakePhotoId ? photo : p)));
       setRetakePhotoId(null);
     } else {
-      setCapturedPhotos((prev) => [...prev, photo]);
+      // Defensive: the "add" button is hidden at MAX_PHOTOS, but a retake race or a
+      // double-fire must not be able to push the list past what the API accepts.
+      setCapturedPhotos((prev) => (prev.length >= MAX_PHOTOS ? prev : [...prev, photo]));
     }
     setCameraOpen(false);
   };
@@ -482,9 +485,15 @@ export default function NewAssessmentScreen() {
 
       const saved = await enqueueOutbox({ input, localPrediction, localActionPlan, localPriorityScore });
       void processOutbox();
+      // Name the reason when the heuristic ran. "Heuristic fallback" on its own told
+      // nobody whether the models were missing, corrupt, or simply not loaded yet.
+      const usedMl = localPrediction.source === 'device-ml-fusion';
+      const reason = usedMl ? null : (getModelLoadError() ?? 'on-device models unavailable');
       Alert.alert(
         'Field assessment saved',
-        `Risk: ${localPrediction.fusedLabel} (${Math.round(localPrediction.fusedConfidence * 100)}% confidence, ${localPrediction.source === 'device-ml-fusion' ? 'on-device ML' : 'heuristic fallback'}). Action plan ready — no signal required.`,
+        `Risk: ${localPrediction.fusedLabel} (${Math.round(localPrediction.fusedConfidence * 100)}% confidence, ${
+          usedMl ? 'on-device ML' : `rule-based estimate — ${reason}`
+        }). Action plan ready — no signal required.`,
         [
           { text: 'View result', onPress: () => router.replace(`/assessment/${saved.id}`) },
           { text: 'Done', onPress: () => router.back() },
@@ -792,8 +801,8 @@ export default function NewAssessmentScreen() {
               <View style={styles.estimateCard}>
                 <Text style={styles.estimateEyebrow}>
                   {fieldResult.prediction.source === 'device-ml-fusion'
-                    ? 'Field assessment (device ML fusion)'
-                    : 'Field assessment (heuristic fallback)'}
+                    ? 'Field assessment · on-device ML'
+                    : 'Field assessment · rule-based estimate'}
                 </Text>
                 <Text style={styles.estimateLabel}>{fieldResult.prediction.fusedLabel}</Text>
                 <Text style={styles.estimateMeta}>

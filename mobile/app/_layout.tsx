@@ -15,6 +15,7 @@ import { TypographyProvider } from '../context/TypographyContext';
 import { AuthProvider } from '../context/AuthContext';
 import { SyncOnReconnect } from '../components/SyncOnReconnect';
 import PasswordRecoveryLinkHandler from '../components/PasswordRecoveryLinkHandler';
+import { initOnDeviceMl } from '../services/onDeviceMl';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,6 +32,15 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Stage the bundled models on launch rather than on the first prediction.
+  // Copying ~137 MB out of the APK takes a moment, and doing it lazily meant the
+  // inspector waited for it at "Save Assessment" -- the worst possible time.
+  // Deliberately not awaited: the UI must not block on it, and predictOnDevice
+  // still calls initOnDeviceMl() itself if this has not finished.
+  useEffect(() => {
+    void initOnDeviceMl();
+  }, []);
 
   if (!fontsLoaded && !fontError) {
     return (
