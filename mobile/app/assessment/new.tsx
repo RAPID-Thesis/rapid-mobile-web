@@ -448,26 +448,33 @@ export default function NewAssessmentScreen() {
 
       const imageUris = capturedPhotos.map((p) => p.uri);
 
-      const localPrediction = await predictOnDevice({
-        phase,
-        buildingUse,
-        yearBuilt,
-        numberOfStories: stories,
-        structuralData: {
-          primaryMaterial: structuralData.primaryMaterial,
-          structuralSystem: structuralData.structuralSystem,
-          soilClass: structuralData.soilClass,
-          topography: structuralData.topography,
-          condition: structuralData.condition,
-          verticalIrregularity: structuralData.verticalIrregularity,
-          planIrregularity: structuralData.planIrregularity,
-          poundingHazard: structuralData.poundingHazard,
-          fallingHazard: structuralData.fallingHazard,
-        },
-        photoUris: imageUris,
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
-      });
+      // Reuse the estimate the review step already produced. Recomputing it here
+      // meant every assessment ran inference twice over the same photos and the
+      // same form -- for eight photos, sixteen native image decodes instead of
+      // eight, all of it while the inspector waits on Save. Only fall through to
+      // a fresh run when the preview could not produce one.
+      const localPrediction =
+        fieldResult?.prediction ??
+        (await predictOnDevice({
+          phase,
+          buildingUse,
+          yearBuilt,
+          numberOfStories: stories,
+          structuralData: {
+            primaryMaterial: structuralData.primaryMaterial,
+            structuralSystem: structuralData.structuralSystem,
+            soilClass: structuralData.soilClass,
+            topography: structuralData.topography,
+            condition: structuralData.condition,
+            verticalIrregularity: structuralData.verticalIrregularity,
+            planIrregularity: structuralData.planIrregularity,
+            poundingHazard: structuralData.poundingHazard,
+            fallingHazard: structuralData.fallingHazard,
+          },
+          photoUris: imageUris,
+          latitude: coords?.latitude ?? null,
+          longitude: coords?.longitude ?? null,
+        }));
 
       const localActionPlan = generateLocalActionPlan({
         phase: localPrediction.phase,
