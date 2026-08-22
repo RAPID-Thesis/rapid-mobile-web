@@ -5,8 +5,15 @@ import type { BranchPrediction } from './fusion';
 import { getMobileManifest, modelPath } from './modelLoader';
 import { applyResNetPreprocess } from './resnetPreprocess';
 
+/**
+ * Mirrors react-native-fast-tflite's real signature. It accepts a require()'d
+ * asset id or a `{ url }` object -- a bare string hits its `else` branch and
+ * throws "Invalid source passed". Our previous hand-written type claimed
+ * `(path: string)`, so TypeScript could not catch that, and every image-branch
+ * call failed at runtime and silently fell back to the heuristic.
+ */
 type TfliteModule = {
-  loadTensorflowModel: (path: string) => Promise<{
+  loadTensorflowModel: (source: { url: string } | number) => Promise<{
     run: (inputs: unknown[]) => Promise<unknown[]>;
   }>;
 };
@@ -40,7 +47,7 @@ async function loadModel(phase: 'pre' | 'post') {
   const path = modelPath(file);
   if (!path) throw new Error('Model path unavailable');
 
-  modelCache[phase] = await tflite.loadTensorflowModel(path);
+  modelCache[phase] = await tflite.loadTensorflowModel({ url: path });
   return modelCache[phase]!;
 }
 

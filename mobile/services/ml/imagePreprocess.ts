@@ -32,20 +32,37 @@ function getImageSize(uri: string): Promise<{ width: number; height: number }> {
  */
 export async function preprocessPhotoForModel(uri: string): Promise<Uint8Array> {
   const { width, height } = await getImageSize(uri);
-  const side = Math.min(width, height);
-  const cropX = Math.floor((width - side) / 2);
-  const cropY = Math.floor((height - side) / 2);
+  const side = Math.max(1, Math.min(width, height));
+
+  // Clamp so the rectangle can never exceed the bitmap. Image.getSize reports
+  // display dimensions, which on an EXIF-rotated photo are the transpose of the
+  // stored pixels; handing the decoder an out-of-bounds crop is a native fault,
+  // not a catchable JavaScript error.
+  const cropX = Math.max(0, Math.min(Math.floor((width - side) / 2), Math.max(0, width - side)));
+  const cropY = Math.max(0, Math.min(Math.floor((height - side) / 2), Math.max(0, height - side)));
 
   // One pass: crop and resize together, so the full-resolution bitmap is only
   // ever materialized once and is released as soon as this call returns.
-  const cropped = await ImageManipulator.manipulateAsync(
-    uri,
-    [
-      { crop: { originX: cropX, originY: cropY, width: side, height: side } },
-      { resize: { width: IMG_SIZE, height: IMG_SIZE } },
-    ],
-    { compress: 1, format: ImageManipulator.SaveFormat.JPEG, base64: true },
-  );
+  let cropped;
+  try {
+    cropped = await ImageManipulator.manipulateAsync(
+      uri,
+      [
+        { crop: { originX: cropX, originY: cropY, width: side, height: side } },
+        { resize: { width: IMG_SIZE, height: IMG_SIZE } },
+      ],
+      { compress: 1, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+    );
+  } catch {
+    // Crop rejected (orientation mismatch, unusual colour space). A plain
+    // square resize distorts aspect ratio slightly but still yields a usable
+    // 224x224 tensor, which beats dropping the photo from the image branch.
+    cropped = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: IMG_SIZE, height: IMG_SIZE } }],
+      { compress: 1, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+    );
+  }
 
   if (!cropped.base64) throw new Error('Photo preprocess produced no image data');
 
