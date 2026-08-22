@@ -213,6 +213,7 @@ function LocalAssessmentDetail({ item: initialItem }: { item: OutboxItem }) {
         <DataRow label="Stories" value={item.input.number_of_stories} />
         <DataRow label="Year Built" value={item.input.year_built ?? '—'} />
         <DataRow label="Soil Class" value={soilClass} />
+        <DataRow label="Distance to Fault" value={faultDistanceLabel(structural)} />
       </SectionCard>
 
       <SectionCard title="Assessment Details">
@@ -289,6 +290,23 @@ function LocalAssessmentDetail({ item: initialItem }: { item: OutboxItem }) {
   );
 }
 
+/**
+ * Fault distance recorded for this assessment, in km.
+ *
+ * The value comes from the bundled PHIVOLCS Valley Fault System trace, sampled at
+ * the GPS fix the same way the Random Forest samples it, so what an inspector sees
+ * here is the number the model actually scored.
+ */
+function faultDistanceLabel(
+  structural: Record<string, unknown>,
+  buildingValue?: unknown,
+): string {
+  const raw = structural.distance_to_fault_km ?? buildingValue;
+  const km = typeof raw === 'string' ? Number(raw) : raw;
+  if (typeof km !== 'number' || !Number.isFinite(km)) return '—';
+  return `${km.toFixed(2)} km`;
+}
+
 function ServerAssessmentDetail({
   assessment,
   building,
@@ -300,6 +318,7 @@ function ServerAssessmentDetail({
   const confidence = assessment.ai_fused_confidence as number | null;
   const { isUnsafe, isRestricted, isPending, badgeColor, gradientEnd } = badgeColors(classLabel);
   const actionRecs = assessment.action_recommendations as string[] | null;
+  const serverStructural = (assessment.structural_data as Record<string, unknown> | null) ?? {};
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -336,7 +355,19 @@ function ServerAssessmentDetail({
         <DataRow label="Use" value={(building?.building_use as string) ?? '—'} />
         <DataRow label="Stories" value={(building?.number_of_stories as string) ?? '—'} />
         <DataRow label="Year Built" value={(building?.year_built as string) ?? '—'} />
-        <DataRow label="Soil Class" value={(building?.soil_classification as string) ?? '—'} />
+        {/* The sync endpoint never populates these building columns, so read what
+            the inspector actually recorded, exactly as the portal does. */}
+        <DataRow
+          label="Soil Class"
+          value={
+            (building?.soil_classification as string) ??
+            (typeof serverStructural.soilClass === 'string' ? serverStructural.soilClass : '—')
+          }
+        />
+        <DataRow
+          label="Distance to Fault"
+          value={faultDistanceLabel(serverStructural, building?.distance_to_fault_km)}
+        />
       </SectionCard>
 
       <SectionCard title="Assessment Details">
