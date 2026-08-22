@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { openPrintableAssessmentReport } from '../lib/assessmentReport';
+import { downloadAssessmentReport } from '../lib/assessmentReport';
 import type { Assessment, Building } from '../types';
 import {
   Button,
@@ -58,7 +58,7 @@ export default function ReportsPage() {
   }, [nonce]);
 
   async function handlePdf(assessment: Assessment, building: Building | undefined) {
-    openPrintableAssessmentReport(assessment, building ?? null);
+    await downloadAssessmentReport(assessment, building ?? null);
     if (assessment.status === 'reviewed') {
       await supabase.from('assessments').update({ status: 'report-generated' }).eq('id', assessment.id);
       setAssessments((prev) =>
@@ -89,9 +89,9 @@ export default function ReportsPage() {
 
       <Card className="mb-3">
         <p className="px-4 py-3 text-xs text-ink-muted">
-          Reviewed assessments export as a printable FEMA P-154–style record. Use your browser's
-          print dialog and choose <span className="font-medium text-ink">Save as PDF</span>. The
-          first export marks the record as issued.
+          Reviewed assessments download as a FEMA P-154 / ATC-20 record in{' '}
+          <span className="font-medium text-ink">PDF</span> format. The first export marks the
+          record as issued.
         </p>
       </Card>
 
@@ -152,7 +152,7 @@ export default function ReportsPage() {
                             variant={issued ? 'secondary' : 'primary'}
                             onClick={() => void handlePdf(a, building)}
                           >
-                            {issued ? 'Print again' : 'Generate report'}
+                            {issued ? 'Download again' : 'Download PDF'}
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => navigate(`/assessments/${a.id}`)}>
                             Open
