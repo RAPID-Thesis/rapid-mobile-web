@@ -64,6 +64,7 @@ export interface Assessment {
   ai_image_probabilities: Record<string, number> | null;
   ai_tabular_label: string | null;
   ai_tabular_confidence: number | null;
+  ai_tabular_probabilities: Record<string, number> | null;
   ai_feature_importance: Record<string, number> | null;
   ai_fusion_weights: { image: number; tabular: number } | null;
   action_recommendations: string[] | null;

@@ -301,6 +301,7 @@ class AssessmentDetailRead(AssessmentRead):
     ai_image_probabilities: dict[str, Any] | None = None
     ai_tabular_label: str | None = None
     ai_tabular_confidence: float | None = None
+    ai_tabular_probabilities: dict[str, Any] | None = None
     ai_feature_importance: dict[str, Any] | None = None
     ai_fusion_weights: dict[str, float] | None = None
     action_generated_by: str | None = None

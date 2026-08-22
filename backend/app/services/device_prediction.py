@@ -34,6 +34,7 @@ def apply_device_prediction(assessment: Assessment, prediction: DevicePrediction
     assessment.ai_image_probabilities = prediction.image_probabilities
     assessment.ai_tabular_label = prediction.tabular_label
     assessment.ai_tabular_confidence = prediction.tabular_confidence
+    assessment.ai_tabular_probabilities = prediction.tabular_probabilities
     assessment.ai_fused_label = prediction.fused_label
     assessment.ai_fused_confidence = prediction.fused_confidence
 

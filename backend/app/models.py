@@ -136,6 +136,7 @@ class Assessment(Base):
     ai_image_probabilities: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_tabular_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_tabular_confidence: Mapped[float | None] = mapped_column(Double, nullable=True)
+    ai_tabular_probabilities: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_feature_importance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_fused_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_fused_confidence: Mapped[float | None] = mapped_column(Double, nullable=True)

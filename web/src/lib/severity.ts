@@ -66,6 +66,35 @@ export function displayLabel(
   return phase.toLowerCase().startsWith('post') ? POST_LABELS[severity] : PRE_LABELS[severity];
 }
 
+/* Title-case forms for UI chrome — filters, legends, band headings — where an
+   all-caps badge label would shout. */
+const PRE_TITLE: Record<Severity, string> = {
+  safe: 'Low',
+  restricted: 'Moderate',
+  unsafe: 'High',
+  unknown: 'Unclassified',
+};
+
+const POST_TITLE: Record<Severity, string> = {
+  safe: 'Safe',
+  restricted: 'Restricted',
+  unsafe: 'Unsafe',
+  unknown: 'Unclassified',
+};
+
+/**
+ * Name a severity band for a phase, e.g. a filter option or a map legend.
+ *
+ * Unlike displayLabel() this describes a band rather than one record, so with no
+ * phase selected it shows both vocabularies ("Low / Safe") instead of echoing a
+ * stored value — the band genuinely covers both frameworks at that point.
+ */
+export function severityBandLabel(severity: Severity, phase?: string | null): string {
+  if (severity === 'unknown') return PRE_TITLE.unknown;
+  if (!phase) return `${PRE_TITLE[severity]} / ${POST_TITLE[severity]}`;
+  return phase.toLowerCase().startsWith('post') ? POST_TITLE[severity] : PRE_TITLE[severity];
+}
+
 export const SEVERITY_STYLES: Record<Severity, string> = {
   safe: 'bg-safe-bg text-safe border-safe-line',
   restricted: 'bg-restricted-bg text-restricted border-restricted-line',

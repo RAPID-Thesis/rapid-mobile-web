@@ -17,6 +17,7 @@ import {
   ErrorState,
   PageHeader,
   SeverityDot,
+  severityBandLabel,
   SkeletonRows,
   StatusBadge,
 } from '../components/ui';
@@ -43,9 +44,12 @@ const PHASE_TABS: { value: PhaseFilter; label: string }[] = [
 
 /** Vocabulary follows the framework in play; the underlying severity is the same. */
 function bandNames(phase: PhaseFilter): { unsafe: string; restricted: string; safe: string } {
-  if (phase === 'pre-earthquake') return { unsafe: 'High', restricted: 'Moderate', safe: 'Low' };
-  if (phase === 'post-earthquake') return { unsafe: 'Unsafe', restricted: 'Restricted', safe: 'Safe' };
-  return { unsafe: 'High / Unsafe', restricted: 'Moderate / Restricted', safe: 'Low / Safe' };
+  const p = phase === 'all' ? null : phase;
+  return {
+    unsafe: severityBandLabel('unsafe', p),
+    restricted: severityBandLabel('restricted', p),
+    safe: severityBandLabel('safe', p),
+  };
 }
 
 interface Band {

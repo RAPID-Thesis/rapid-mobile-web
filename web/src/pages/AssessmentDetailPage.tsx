@@ -57,6 +57,43 @@ function DriverRow({ driver }: { driver: Driver }) {
 }
 
 /** Horizontal probability row used for the per-branch model breakdown. */
+/**
+ * Turn a Random Forest feature name into something an inspector reads without
+ * knowing what a one-hot encoding is: `cat__soil_classification_E` becomes
+ * "Soil type E", `num__distance_to_fault_km` becomes "Distance to fault line".
+ */
+const FEATURE_LABELS: Record<string, string> = {
+  year_built: 'Year built',
+  building_age: 'Age of building',
+  number_of_stories: 'Number of storeys',
+  distance_to_fault_km: 'Distance to fault line',
+  elevation_m: 'Ground elevation',
+  slope_deg: 'Ground slope',
+  previous_retrofit_as_int: 'Previously retrofitted',
+  building_use: 'Building use',
+  soil_classification: 'Soil type',
+  structural_system: 'Structural system',
+  foundation_type: 'Foundation type',
+  material: 'Construction material',
+};
+
+function featureName(raw: string): string {
+  const bare = raw.replace(/^num__/, '').replace(/^cat__/, '');
+  if (FEATURE_LABELS[bare]) return FEATURE_LABELS[bare];
+
+  // Categorical features arrive one-hot encoded as `<feature>_<category>`, so
+  // peel category values off the end until the remainder is a known feature.
+  const parts = bare.split('_');
+  for (let cut = parts.length - 1; cut > 0; cut--) {
+    const head = parts.slice(0, cut).join('_');
+    if (FEATURE_LABELS[head]) {
+      const value = parts.slice(cut).join(' ').replace(/-/g, ' ');
+      return `${FEATURE_LABELS[head]}: ${value}`;
+    }
+  }
+  return bare.replace(/_/g, ' ');
+}
+
 function ProbabilityRow({ label, value }: { label: string; value: number }) {
   const pct = Math.max(0, Math.min(100, value <= 1 ? value * 100 : value));
   const severity = severityOf(label);
@@ -482,46 +519,90 @@ export default function AssessmentDetailPage() {
             );
           })()}
 
-          {(assessment.ai_image_probabilities != null || assessment.ai_feature_importance != null) && (
+          {(assessment.ai_image_probabilities != null ||
+            assessment.ai_tabular_probabilities != null ||
+            assessment.ai_tabular_label != null ||
+            assessment.ai_feature_importance != null) && (
             <Card>
               <CardHeader
                 title="Model breakdown"
-                description="How each branch contributed to the fused result."
+                description="How each half of the model voted, and how the two were combined."
               />
               <CardBody className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 {assessment.ai_image_probabilities && (
                   <div>
-                    <h3 className="mb-2 text-xs font-semibold text-ink-muted">
-                      Image branch · ResNet50
-                    </h3>
+                    <h3 className="text-xs font-semibold text-ink">What the photos show</h3>
+                    <p className="mb-2 text-2xs text-ink-subtle">
+                      ResNet50 · reads the captured images
+                    </p>
                     {Object.entries(assessment.ai_image_probabilities).map(([k, v]) => (
-                      <ProbabilityRow key={k} label={k.toUpperCase()} value={Number(v)} />
+                      <ProbabilityRow
+                        key={k}
+                        label={displayLabel(k, assessment.phase)}
+                        value={Number(v)}
+                      />
                     ))}
                   </div>
                 )}
-                {assessment.ai_feature_importance && (
+
+                {(assessment.ai_tabular_probabilities || assessment.ai_tabular_label) && (
                   <div>
-                    <h3 className="mb-2 text-xs font-semibold text-ink-muted">
-                      Tabular branch · feature importance
-                    </h3>
+                    <h3 className="text-xs font-semibold text-ink">What the building profile shows</h3>
+                    <p className="mb-2 text-2xs text-ink-subtle">
+                      Random Forest · reads age, height, material, soil and site
+                    </p>
+                    {assessment.ai_tabular_probabilities ? (
+                      Object.entries(assessment.ai_tabular_probabilities).map(([k, v]) => (
+                        <ProbabilityRow
+                          key={k}
+                          label={displayLabel(k, assessment.phase)}
+                          value={Number(v)}
+                        />
+                      ))
+                    ) : (
+                      <>
+                        {/* Rows synced before migration 006 kept only the winning
+                            class, so show that rather than fabricating a split. */}
+                        <ProbabilityRow
+                          label={displayLabel(assessment.ai_tabular_label, assessment.phase)}
+                          value={assessment.ai_tabular_confidence ?? 0}
+                        />
+                        <p className="mt-1.5 text-2xs text-ink-subtle">
+                          Only the leading result was recorded for this assessment.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </CardBody>
+
+              {assessment.ai_feature_importance && (
+                <div className="border-t border-line px-4 py-3">
+                  <h3 className="text-xs font-semibold text-ink">
+                    Which building details mattered most
+                  </h3>
+                  <p className="mb-2 text-2xs text-ink-subtle">
+                    How much each detail influenced the building-profile result — across all
+                    buildings, not this one alone.
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
                     {Object.entries(assessment.ai_feature_importance)
                       .sort(([, a], [, b]) => Number(b) - Number(a))
                       .slice(0, 8)
                       .map(([k, v]) => (
-                        <ProbabilityRow
-                          key={k}
-                          label={k.replace(/^cat__|^num__/, '').replace(/_/g, ' ')}
-                          value={Number(v)}
-                        />
+                        <ProbabilityRow key={k} label={featureName(k)} value={Number(v)} />
                       ))}
                   </div>
-                )}
-              </CardBody>
+                </div>
+              )}
+
               {assessment.ai_fusion_weights && (
                 <div className="border-t border-line px-4 py-2.5">
                   <p className="text-2xs text-ink-subtle">
-                    Fused at {(assessment.ai_fusion_weights.image * 100).toFixed(0)}% image /{' '}
-                    {(assessment.ai_fusion_weights.tabular * 100).toFixed(0)}% structural data.
+                    Final result ={' '}
+                    {(assessment.ai_fusion_weights.image * 100).toFixed(0)}% of the photo result +{' '}
+                    {(assessment.ai_fusion_weights.tabular * 100).toFixed(0)}% of the building-profile
+                    result.
                   </p>
                 </div>
               )}

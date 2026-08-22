@@ -13,7 +13,15 @@ import {
   type SjdmDistrict,
 } from '../constants/sjdmLocations';
 import type { Assessment, AssessmentPhase, Building } from '../types';
-import { Button, Card, displayLabel, ErrorState, PageHeader, Select } from '../components/ui';
+import {
+  Button,
+  Card,
+  displayLabel,
+  ErrorState,
+  PageHeader,
+  Select,
+  severityBandLabel,
+} from '../components/ui';
 import 'leaflet/dist/leaflet.css';
 
 /** San Jose del Monte, Bulacan — default map focus (users can still pan/zoom out). */
@@ -281,9 +289,9 @@ export default function HeatmapPage() {
                 onChange={(e) => setRiskFilter(e.target.value as typeof riskFilter)}
               >
                 <option value="all">All classifications</option>
-                <option value="high">Unsafe / High</option>
-                <option value="moderate">Restricted / Moderate</option>
-                <option value="low">Safe / Low</option>
+                <option value="high">{severityBandLabel('unsafe', phaseFilter)}</option>
+                <option value="moderate">{severityBandLabel('restricted', phaseFilter)}</option>
+                <option value="low">{severityBandLabel('safe', phaseFilter)}</option>
               </Select>
             </div>
 
@@ -365,9 +373,9 @@ export default function HeatmapPage() {
               <ul className="space-y-1.5">
                 {(
                   [
-                    ['high', 'Unsafe', tally.high],
-                    ['moderate', 'Restricted', tally.moderate],
-                    ['low', 'Safe', tally.low],
+                    ['high', severityBandLabel('unsafe', phaseFilter), tally.high],
+                    ['moderate', severityBandLabel('restricted', phaseFilter), tally.moderate],
+                    ['low', severityBandLabel('safe', phaseFilter), tally.low],
                   ] as const
                 ).map(([tier, label, count]) => (
                   <li key={tier} className="flex items-center gap-2 text-xs">

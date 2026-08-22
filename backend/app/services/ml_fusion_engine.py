@@ -659,6 +659,7 @@ async def process_assessment(assessment_id: UUID) -> None:
         assessment.ai_image_probabilities = img_out["probabilities"] if img_out else None
         assessment.ai_tabular_label = tab_out["label"] if tab_out else None
         assessment.ai_tabular_confidence = tab_out["confidence"] if tab_out else None
+        assessment.ai_tabular_probabilities = tab_out["probabilities"] if tab_out else None
         assessment.ai_feature_importance = tab_out["feature_importance"] if tab_out else None
         assessment.ai_fused_label = result["label"]
         assessment.ai_fused_confidence = result["confidence"]

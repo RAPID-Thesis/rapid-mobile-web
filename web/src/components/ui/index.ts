@@ -14,7 +14,7 @@ export {
 
 // Vocabulary + thresholds live outside the component module so non-component
 // code can import them without tripping React fast refresh.
-export { severityOf, displayLabel, SEVERITY_MEANING, REVIEW_THRESHOLD } from '../../lib/severity';
+export { severityOf, displayLabel, severityBandLabel, SEVERITY_MEANING, REVIEW_THRESHOLD } from '../../lib/severity';
 export type { Severity } from '../../lib/severity';
 
 export { Alert, EmptyState, ErrorState, Skeleton, SkeletonRows, SkeletonCards } from './Feedback';

@@ -15,6 +15,7 @@ import {
   PhaseBadge,
   SearchInput,
   Select,
+  severityBandLabel,
   SeverityDot,
   SkeletonRows,
   StatusBadge,
@@ -52,16 +53,10 @@ function classificationNames(phase: AssessmentPhase | ''): Record<
   'safe' | 'restricted' | 'unsafe',
   string
 > {
-  if (phase === 'pre-earthquake') {
-    return { safe: 'Low', restricted: 'Moderate', unsafe: 'High' };
-  }
-  if (phase === 'post-earthquake') {
-    return { safe: 'Safe', restricted: 'Restricted', unsafe: 'Unsafe' };
-  }
   return {
-    safe: 'Low / Safe',
-    restricted: 'Moderate / Restricted',
-    unsafe: 'High / Unsafe',
+    safe: severityBandLabel('safe', phase || null),
+    restricted: severityBandLabel('restricted', phase || null),
+    unsafe: severityBandLabel('unsafe', phase || null),
   };
 }
 
