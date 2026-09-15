@@ -563,6 +563,12 @@ export default function NewAssessmentScreen() {
         poundingHazard: structuralData.poundingHazard,
         fallingHazard: structuralData.fallingHazard,
         photoCount: capturedPhotos.length,
+        // What the validity gate made of the photos. Surfaces automatically in
+        // the portal's field-form card, so a reviewer can see that a record was
+        // classified on tabular data alone because its photos were not of a
+        // building -- rather than inferring it from a missing image label.
+        photos_flagged: capturedPhotos.filter((p) => p.subjectVerdict !== 'accept').length,
+        photos_unchecked: capturedPhotos.filter((p) => p.subjectVerdict === 'unchecked').length,
         gps_accuracy_m: coords?.accuracy_m ?? null,
         gps_captured_at: coords?.capturedAt ?? null,
         // How the coordinate was obtained. A dropped pin and a satellite fix are

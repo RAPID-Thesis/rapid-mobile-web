@@ -19,6 +19,17 @@ const files = [
   'rf_post.onnx',
 ];
 
+/**
+ * The image-validity gate. Listed apart because the app is correct without it:
+ * modelLoader treats it as optional, so a build missing these two files still
+ * classifies, it just does not screen the subject first.
+ *
+ * image_gate_buckets.json also carries the thresholds, which eval_image_gate.py
+ * rewrites -- copy it whenever that has been re-run, even if the .tflite has not
+ * changed.
+ */
+const optionalFiles = ['image_gate.tflite', 'image_gate_buckets.json'];
+
 if (!fs.existsSync(src)) {
   console.error('Missing ml/artifacts/mobile — run export_mobile_models.py first.');
   process.exit(1);
@@ -36,6 +47,17 @@ for (const f of files) {
   copied++;
 }
 
+let optionalCopied = 0;
+for (const f of optionalFiles) {
+  const from = path.join(src, f);
+  if (!fs.existsSync(from)) {
+    console.warn('Skip (optional, missing):', f, '— run export_image_gate_model.py to build it');
+    continue;
+  }
+  fs.copyFileSync(from, path.join(dest, f));
+  optionalCopied++;
+}
+
 if (copied > 0) {
   const manifestPath = path.join(dest, 'mobile_manifest.json');
   if (fs.existsSync(manifestPath)) {
@@ -45,4 +67,6 @@ if (copied > 0) {
   }
 }
 
-console.log(`Staged ${copied} file(s) → mobile/assets/models`);
+console.log(
+  `Staged ${copied} required + ${optionalCopied} optional file(s) → mobile/assets/models`,
+);

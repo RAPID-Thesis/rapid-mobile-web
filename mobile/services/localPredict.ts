@@ -35,6 +35,15 @@ export interface LocalPredictionResult {
   imageProbabilities?: Record<string, number> | null;
   tabularProbabilities?: Record<string, number> | null;
   fusionWeights?: { image: number; tabular: number } | null;
+  /**
+   * Photos the validity gate refused to classify.
+   *
+   * Recorded because it changes how the rest of the result should be read: a
+   * prediction with imageLabel null and rejectedImages > 0 is tabular-only
+   * *because the photos were not of a building*, which is a different statement
+   * from an assessment that simply had no photos.
+   */
+  rejectedImages?: number;
 }
 
 const PRE_ORDER = ['low', 'moderate', 'high'] as const;

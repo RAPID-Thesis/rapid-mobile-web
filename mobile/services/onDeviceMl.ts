@@ -7,6 +7,7 @@ import {
   type OfflineStructuralForm,
 } from './localPredict';
 import { fusePredictions } from './ml/fusion';
+import { evaluateImageTensor } from './ml/imageGate';
 import { preprocessPhotoForModel } from './ml/imagePreprocess';
 import { ensureModelsLoaded, getMobileManifest } from './ml/modelLoader';
 import { isOnnxAvailable, runRfOnnx } from './ml/onnxRunner';
@@ -88,14 +89,35 @@ export async function predictOnDevice(params: PredictOnDeviceParams): Promise<Lo
     // whole prediction -- losing one image is a smaller loss than losing the
     // image branch entirely.
     const rgbBatch: Uint8Array[] = [];
+    let rejectedImages = 0;
     for (const uri of params.photoUris) {
       try {
-        rgbBatch.push(await preprocessPhotoForModel(uri));
+        const rgb = await preprocessPhotoForModel(uri);
+
+        // The validity gate, applied where it cannot be bypassed. The capture
+        // screen already warns on a bad subject, but photos can also arrive from
+        // a retake flow or a queued record, and a person's portrait must never
+        // reach the classifier just because it took a different route in.
+        //
+        // Only a 'block' verdict drops the photo; a 'warn' is advisory and the
+        // inspector has already seen it. The tensor is reused as-is, so the gate
+        // costs one extra inference and no extra decode.
+        const gate = await evaluateImageTensor(rgb);
+        if (gate.verdict === 'block') {
+          rejectedImages++;
+          continue;
+        }
+
+        rgbBatch.push(rgb);
       } catch (e) {
         console.warn('[ML] skipping unreadable photo:', e);
       }
     }
 
+    // With every photo rejected this is null, and fusion degrades to
+    // tabular-only with weights {image: 0, tabular: 1} -- the same path a
+    // capture with no photos has always taken. The frozen models and the fusion
+    // arithmetic are untouched by the gate.
     const imageBranch =
       rgbBatch.length > 0
         ? await runResNetTflite({ phase: params.phase, rgbBatch })
@@ -128,6 +150,7 @@ export async function predictOnDevice(params: PredictOnDeviceParams): Promise<Lo
       tabularProbabilities: tabularBranch.probabilities,
       fusionWeights: fused.weights,
       source: 'device-ml-fusion',
+      rejectedImages,
     };
   } catch (e) {
     console.warn('[ML] predictOnDevice failed, using heuristic:', e);

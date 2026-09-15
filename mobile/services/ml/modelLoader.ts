@@ -43,6 +43,21 @@ const MODEL_MODULES: Record<string, number> = {
 
 const MODEL_NAMES = Object.keys(MODEL_MODULES) as readonly string[];
 
+/**
+ * Models the app is better with and still correct without.
+ *
+ * Kept apart from MODEL_MODULES on purpose: everything above is required, and a
+ * missing file there means no on-device classification at all. The image gate
+ * only decides whether a photo is worth classifying, so if it fails to stage the
+ * right outcome is the pipeline it had before the gate existed -- not an app
+ * that refuses to assess anything.
+ */
+const OPTIONAL_MODEL_MODULES: Record<string, number> = {
+  'image_gate.tflite': require('../../assets/models/image_gate.tflite'),
+};
+
+const stagedOptional = new Set<string>();
+
 let cacheDir: string | null = null;
 let manifest: MobileManifest | null = null;
 let initPromise: Promise<boolean> | null = null;
@@ -83,6 +98,10 @@ async function initModels(): Promise<boolean> {
 
     manifest = parsed;
     cacheDir = base;
+
+    // After the required set, and never allowed to fail the init.
+    await stageOptionalModels(base);
+
     return true;
   } catch (e) {
     loadError = e instanceof Error ? e.message : String(e);
@@ -122,6 +141,36 @@ async function stageBundledModels(base: string): Promise<void> {
   }
 }
 
+/**
+ * Stage the optional models, recording which ones made it.
+ *
+ * Failures are logged and swallowed per file: an image gate that cannot be
+ * copied must not take the classifier down with it.
+ */
+async function stageOptionalModels(base: string): Promise<void> {
+  for (const [name, moduleId] of Object.entries(OPTIONAL_MODEL_MODULES)) {
+    try {
+      const target = base + name;
+      const existing = await FileSystem.getInfoAsync(target);
+      if (!existing.exists || (existing.size ?? 0) < 1024) {
+        const asset = Asset.fromModule(moduleId);
+        await asset.downloadAsync();
+        const src = asset.localUri ?? asset.uri;
+        if (!src) throw new Error(`Could not resolve bundled asset for ${name}`);
+        await FileSystem.copyAsync({ from: src, to: target });
+      }
+      stagedOptional.add(name);
+    } catch (e) {
+      console.warn(`[ML] Optional model ${name} unavailable:`, e);
+    }
+  }
+}
+
+/** Whether an optional model was staged and can be given to a runtime. */
+export function isOptionalModelAvailable(filename: string): boolean {
+  return cacheDir != null && stagedOptional.has(filename);
+}
+
 async function missingModels(base: string): Promise<string[]> {
   const missing: string[] = [];
   for (const name of MODEL_NAMES) {
@@ -148,6 +197,7 @@ export function resetModelCacheForTests(): void {
   initPromise = null;
   manifest = null;
   cacheDir = null;
+  stagedOptional.clear();
 }
 
 export function androidAssetModelUri(filename: string): string | null {

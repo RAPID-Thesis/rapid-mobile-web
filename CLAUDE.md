@@ -107,9 +107,12 @@ Run from the repo root unless noted.
 | Mobile typecheck | `cd mobile && npx tsc --noEmit` |
 | Mobile Android build | `npm run build:android` (EAS preview) or `cd mobile/android && ./gradlew installDebug` |
 | Export device models | `python ml/scripts/export_mobile_models.py` then `python ml/scripts/parity_test_mobile_models.py` |
+| Export the photo-validity gate | `python ml/scripts/export_image_gate_model.py --copy-to-mobile` |
+| Measure the gate | `python ml/scripts/eval_image_gate.py [--write-thresholds]` · `--probe DIR` to score your own photos |
 | Retrain | `python ml/train_tabular_rf.py` · `python ml/train_resnet50.py` (see [ml/README.md](ml/README.md)) |
 | Server model smoke test | `python ml/scripts/smoke_test_models.py` |
 | Rebuild geo bundle | `python ml/scripts/export_mobile_geo.py --copy-to-mobile` (**needs `ml/.venv`** for geopandas) |
+| Re-geocode barangays | `python ml/scripts/export_mobile_geo.py --refresh-barangays --copy-to-mobile` (hits Nominatim at 1 req/s, ~2 min; caches to `ml/data/gis/barangay_centroids.json`) |
 
 ### Image dataset pipeline (run in this order)
 Use `backend/.venv` — these need Pillow/TensorFlow, not geopandas.

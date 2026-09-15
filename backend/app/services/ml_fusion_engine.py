@@ -538,6 +538,97 @@ def _top_feature_importance(pipeline, top_k: int = 8) -> dict[str, float]:
         return {}
 
 
+# ---------- Image validity gate ----------
+#
+# Mirrors mobile/services/ml/imageGate.ts. The device is the only thing that
+# classifies in production, so this is the reference half of a pair rather than a
+# live code path -- but the two must not drift, the same way the fusion weights
+# and class orders must not.
+#
+# The gate asserts the negative ("this is confidently a person / a meal / a pet /
+# a vehicle") rather than trying to recognise a building, because the image
+# branch trains on close-ups of concrete surfaces rather than facades. See
+# ml/scripts/export_image_gate_model.py for the measurement behind that choice.
+
+_GATE_SPEC_PATH = MODEL_DIR / "mobile" / "image_gate_buckets.json"
+_gate_spec: dict[str, Any] | None = None
+_gate_interpreter: Any = None
+
+
+def _load_gate() -> tuple[dict[str, Any], Any] | None:
+    """The gate model and its bucket spec, or None if this install has neither."""
+    global _gate_spec, _gate_interpreter
+
+    if _gate_interpreter is not None and _gate_spec is not None:
+        return _gate_spec, _gate_interpreter
+    if not _GATE_SPEC_PATH.is_file():
+        return None
+
+    try:
+        import tensorflow as tf  # noqa: WPS433
+
+        spec = json.loads(_GATE_SPEC_PATH.read_text(encoding="utf-8"))
+        model_path = _GATE_SPEC_PATH.parent / spec["model"]
+        if not model_path.is_file():
+            return None
+        interpreter = tf.lite.Interpreter(model_path=str(model_path))
+        interpreter.allocate_tensors()
+    except Exception as exc:  # pragma: no cover - optional dependency path
+        logger.warning("Image gate unavailable: %s", exc)
+        return None
+
+    _gate_spec, _gate_interpreter = spec, interpreter
+    return spec, interpreter
+
+
+def predict_validity(image: bytes) -> dict[str, Any]:
+    """Judge whether one photo is worth classifying.
+
+    Fails open: any missing artifact, unreadable image or runtime error yields
+    "accept". A gate that cannot run must not stop an assessment.
+    """
+    import numpy as np  # noqa: WPS433
+
+    accepted = {"verdict": "accept", "bucket": None, "score": 0.0}
+
+    loaded = _load_gate()
+    if loaded is None:
+        return accepted
+    spec, interpreter = loaded
+
+    try:
+        # The graph carries its own Rescaling layer, so this is plain 0-255 RGB.
+        rgb = _preprocess_image(image).astype(np.float32)
+        inp = interpreter.get_input_details()[0]
+        out = interpreter.get_output_details()[0]
+        interpreter.set_tensor(inp["index"], np.expand_dims(rgb, 0).astype(inp["dtype"]))
+        interpreter.invoke()
+        probs = interpreter.get_tensor(out["index"])[0]
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Image gate inference failed: %s", exc)
+        return accepted
+
+    blocking = set(spec.get("blocking", []))
+    thresholds = spec.get("thresholds", {})
+    fired: dict[str, Any] | None = None
+
+    for bucket, indices in spec.get("buckets", {}).items():
+        mass = float(probs[np.array(indices, dtype=np.int32)].sum())
+        threshold = thresholds.get(bucket)
+        if threshold is None or mass <= threshold:
+            continue
+        verdict = "block" if bucket in blocking else "warn"
+        # A block outranks a warn; between equals the more confident bucket wins.
+        if (
+            fired is None
+            or (verdict == "block" and fired["verdict"] == "warn")
+            or mass > fired["score"]
+        ):
+            fired = {"verdict": verdict, "bucket": bucket, "score": mass}
+
+    return fired or accepted
+
+
 def predict_fused(
     *,
     images: list[bytes] | None,
@@ -551,6 +642,19 @@ def predict_fused(
 
     phase_key = _phase_key(phase)
     classes = _classes_for(phase_key)
+
+    # Screen the photos before the classifier sees them. Dropping every image
+    # leaves `images` empty, and the tabular-only branch below already handles
+    # that -- the fusion arithmetic is untouched.
+    rejected = 0
+    if images:
+        kept = []
+        for image in images:
+            if predict_validity(image)["verdict"] == "block":
+                rejected += 1
+                continue
+            kept.append(image)
+        images = kept or None
 
     image_result = predict_image(images, phase_key) if images else None
     tabular_result = predict_tabular(tabular, phase_key) if tabular else None
@@ -587,6 +691,7 @@ def predict_fused(
         "weights": weights,
         "image": image_result,
         "tabular": tabular_result,
+        "rejected_images": rejected,
     }
 
 

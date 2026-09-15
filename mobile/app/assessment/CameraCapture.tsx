@@ -15,6 +15,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { WizardTheme } from '../../constants/wizardTheme';
 import { APP_NAME } from '../../constants/branding';
 import Text from '../../components/CustomText';
+import {
+  evaluateImageUri,
+  isImageGateAvailable,
+  type GateVerdict,
+} from '../../services/ml/imageGate';
 
 export interface CapturedPhoto {
   id: string;
@@ -23,6 +28,16 @@ export interface CapturedPhoto {
   height: number;
   blurScore: number;
   capturedAt: string;
+  /**
+   * What the validity gate made of the subject.
+   *
+   * 'unchecked' is a real state, not a default: the gate is an optional model
+   * and may not have loaded. The wizard records it so a record can say the photo
+   * was never screened, rather than implying it passed.
+   */
+  subjectVerdict: GateVerdict | 'unchecked';
+  subjectBucket: string | null;
+  subjectScore: number;
 }
 
 interface CameraCaptureProps {
@@ -211,6 +226,15 @@ async function analyzeQuality(
     );
   }
 
+  // Subject check. Runs here, before compressForUpload, so the gate judges the
+  // original capture rather than a re-encoded copy -- and before the photo is
+  // committed, so a rejection costs a retake rather than a bad record.
+  //
+  // Fails open by construction: evaluateImageUri returns 'accept' when the gate
+  // cannot load or cannot decode, so a camera that works today keeps working
+  // even if the model is missing from the build.
+  const subject = await evaluateImageUri(pic.uri);
+
   // Blur proxy: compare the "detail density" of a tiny recompressed copy.
   // Sharp photos preserve high-frequency texture → larger JPEG bytes per pixel.
   // Blurry photos compress tightly. This is a heuristic (true variance-of-Laplacian
@@ -237,6 +261,9 @@ async function analyzeQuality(
     height,
     blurScore,
     capturedAt: new Date().toISOString(),
+    subjectVerdict: isImageGateAvailable() ? subject.verdict : 'unchecked',
+    subjectBucket: subject.bucket,
+    subjectScore: subject.score,
   };
 }
 
@@ -330,6 +357,17 @@ function collectQualityIssues(photo: Omit<CapturedPhoto, 'id'>) {
     issues.push({
       severity: 'warn',
       message: 'Photo looks soft. Hold steady, tap to focus, then recapture.',
+    });
+  }
+  if (photo.subjectVerdict === 'block' || photo.subjectVerdict === 'warn') {
+    issues.push({
+      severity: photo.subjectVerdict,
+      message:
+        photo.subjectBucket === 'person'
+          ? 'This looks like a photo of a person, not a building. Retake it facing the structure.'
+          : photo.subjectBucket === 'screen_document'
+            ? 'This may be a screen or a document rather than a building.'
+            : 'This does not look like a building. Retake it facing the structure.',
     });
   }
   return issues;
