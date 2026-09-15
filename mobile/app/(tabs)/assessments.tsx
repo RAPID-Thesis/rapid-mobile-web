@@ -316,7 +316,7 @@ export default function AssessmentsScreen() {
                   onPress={() => router.push('/assessment/new')}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.emptyActionText}>Start Assessment</Text>
+                  <Text style={styles.emptyActionText}>Take Assessment</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -327,7 +327,7 @@ export default function AssessmentsScreen() {
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + fabBottom }]}
         onPress={() => router.push('/assessment/new')}
-        accessibilityLabel="New assessment"
+        accessibilityLabel="Take assessment"
       >
         <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>

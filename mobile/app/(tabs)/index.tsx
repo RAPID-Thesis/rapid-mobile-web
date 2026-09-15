@@ -115,7 +115,7 @@ export default function HomeScreen() {
           style={styles.newButtonGradient}
         >
           <Ionicons name="add-circle" size={24} color="#FFFFFF" />
-          <Text style={styles.newButtonText}>New Assessment</Text>
+          <Text style={styles.newButtonText}>Take Assessment</Text>
         </LinearGradient>
       </TouchableOpacity>
     </ScrollView>

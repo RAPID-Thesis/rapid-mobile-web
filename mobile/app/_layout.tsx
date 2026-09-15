@@ -75,7 +75,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen
               name="assessment/new"
-              options={{ title: 'New Assessment', presentation: 'modal' }}
+              options={{ title: 'Take Assessment', presentation: 'modal' }}
             />
             <Stack.Screen
               name="assessment/[id]"
