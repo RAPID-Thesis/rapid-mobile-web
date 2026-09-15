@@ -23,6 +23,7 @@ import { AssessmentPhase, BuildingUse } from '../../types';
 import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
 import { WizardTheme } from '../../constants/wizardTheme';
 import CameraCapture, { CapturedPhoto } from './CameraCapture';
+import LocationPicker from '../../components/LocationPicker';
 import Text from '../../components/CustomText';
 import { useAuth } from '../../context/AuthContext';
 import type { LocalPredictionResult } from '../../services/localPredict';
@@ -221,6 +222,7 @@ export default function NewAssessmentScreen() {
   // inspector picks a suggestion — without it, choosing a row reopens the list.
   const [suggestionsMuted, setSuggestionsMuted] = useState(false);
   const [locationNote, setLocationNote] = useState<string | null>(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const [activeLocationPicker, setActiveLocationPicker] = useState<LocationPicker | null>(null);
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
@@ -828,13 +830,37 @@ export default function NewAssessmentScreen() {
               ) : null}
               {gpsStatus === 'ready' && coords ? (
                 <View style={styles.gpsRow}>
-                  <Ionicons name="location" size={16} color={WizardTheme.colors.success} />
+                  <Ionicons
+                    name={coords.source === 'gps' ? 'location' : 'pin'}
+                    size={16}
+                    color={
+                      coords.source === 'gps'
+                        ? WizardTheme.colors.success
+                        : WizardTheme.colors.primary
+                    }
+                  />
                   <Text style={styles.gpsBody}>
-                    GPS: {coords.latitude.toFixed(6)}, {coords.longitude.toFixed(6)}
+                    {coords.source === 'gps' ? 'GPS' : coords.source === 'map-pin' ? 'Pinned' : 'From address'}
+                    : {coords.latitude.toFixed(6)}, {coords.longitude.toFixed(6)}
                     {coords.accuracy_m != null ? ` (~${Math.round(coords.accuracy_m)} m)` : ''}
                   </Text>
                 </View>
               ) : null}
+
+              {/* Always available, not just when GPS fails. A fix is often
+                  perfectly valid and still in the wrong place -- it reports
+                  where the inspector is standing, which is the street, not the
+                  building they are assessing. */}
+              <TouchableOpacity
+                style={styles.mapPinBtn}
+                onPress={() => setMapPickerOpen(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="map-outline" size={16} color={WizardTheme.colors.primary} />
+                <Text style={styles.mapPinBtnText}>
+                  {coords ? 'Adjust on map' : 'Set on map'}
+                </Text>
+              </TouchableOpacity>
               {gpsStatus === 'denied' ? (
                 <View style={styles.gpsAlertBox}>
                   <Text style={styles.gpsAlertText}>
@@ -878,7 +904,9 @@ export default function NewAssessmentScreen() {
                       onPress={() =>
                         Alert.alert(
                           'Skip GPS?',
-                          'Skipping GPS may weaken heatmap placement and elevation/slope-based model features. Continue anyway?',
+                          'This saves the record at 0,0, which the sync queue will refuse until ' +
+                            'coordinates are added. Setting the location on the map avoids that ' +
+                            'and works offline. Skip anyway?',
                           [
                             { text: 'Cancel', style: 'cancel' },
                             {
@@ -1156,6 +1184,21 @@ export default function NewAssessmentScreen() {
         onCaptured={handleCaptured}
       />
 
+      <LocationPicker
+        visible={mapPickerOpen}
+        initial={coords ? { latitude: coords.latitude, longitude: coords.longitude } : null}
+        onCancel={() => setMapPickerOpen(false)}
+        onConfirm={(fix) => {
+          setCoords(fix);
+          setGpsStatus('ready');
+          // A pinned location is a deliberate choice, so it clears the bypass: the
+          // record is no longer one of the (0,0) rows the outbox refuses to sync.
+          setGpsBypassed(false);
+          setMapPickerOpen(false);
+          void applyReverseGeocode(fix.latitude, fix.longitude);
+        }}
+      />
+
       <Modal
         visible={Boolean(locationPickerConfig)}
         transparent
@@ -1343,6 +1386,23 @@ const styles = StyleSheet.create({
     marginBottom: WizardTheme.spacing.md,
     fontSize: WizardTheme.typography.helper,
     color: Colors.restricted,
+  },
+  mapPinBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: WizardTheme.spacing.sm,
+    marginTop: 6,
+    minHeight: MinTouchTarget,
+    borderRadius: WizardTheme.radius.md,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.primary,
+    backgroundColor: WizardTheme.colors.card,
+  },
+  mapPinBtnText: {
+    fontSize: WizardTheme.typography.body,
+    fontWeight: '600',
+    color: WizardTheme.colors.primary,
   },
   buildingUseReadOnly: {
     justifyContent: 'center',
