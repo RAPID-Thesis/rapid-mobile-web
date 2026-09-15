@@ -59,9 +59,9 @@ function badgeColors(label: string) {
   const gradientEnd = isUnsafe
     ? '#7F1D1D'
     : isRestricted
-      ? '#92400E'
+      ? Colors.restrictedDeep
       : isPending
-        ? '#B45309'
+        ? Colors.restricted
         : '#166534';
   return { isUnsafe, isRestricted, isPending, badgeColor, gradientEnd };
 }
@@ -150,7 +150,7 @@ function LocalAssessmentDetail({ item: initialItem }: { item: OutboxItem }) {
 
       {missingGps ? (
         <View style={styles.gpsFixBanner}>
-          <Ionicons name="location-outline" size={22} color="#92400E" />
+          <Ionicons name="location-outline" size={22} color={Colors.restrictedDeep} />
           <View style={styles.gpsFixText}>
             <Text style={styles.gpsFixTitle}>GPS coordinates missing</Text>
             <Text style={styles.gpsFixBody}>
@@ -580,10 +580,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     padding: Spacing.md,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: Colors.restrictedBg,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: Colors.restrictedBorder,
   },
   pendingText: { fontSize: FontSize.sm, color: Colors.warning, fontWeight: '500', flex: 1 },
   uploadHint: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: '500', flex: 1, lineHeight: 20 },
@@ -594,14 +594,14 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.md,
     marginBottom: Spacing.sm,
     padding: Spacing.md,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: Colors.restrictedBg,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: '#F59E0B',
+    borderColor: Colors.restrictedSolid,
   },
   gpsFixText: { flex: 1 },
-  gpsFixTitle: { fontSize: FontSize.sm, fontWeight: '800', color: '#92400E' },
-  gpsFixBody: { marginTop: 4, fontSize: FontSize.xs, color: '#78350F', lineHeight: 18 },
+  gpsFixTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.restrictedDeep },
+  gpsFixBody: { marginTop: 4, fontSize: FontSize.xs, color: Colors.restrictedDeep, lineHeight: 18 },
   gpsFixErr: { marginTop: 6, fontSize: FontSize.xs, color: Colors.error },
   gpsFixBtn: {
     flexDirection: 'row',

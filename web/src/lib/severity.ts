@@ -104,7 +104,7 @@ export const SEVERITY_STYLES: Record<Severity, string> = {
 
 export const SEVERITY_DOT: Record<Severity, string> = {
   safe: 'bg-safe',
-  restricted: 'bg-restricted',
+  restricted: 'bg-restricted-solid',
   unsafe: 'bg-unsafe',
   unknown: 'bg-line-strong',
 };

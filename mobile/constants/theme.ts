@@ -12,7 +12,7 @@ import { platformShadow } from '../utils/platformShadow';
    Everything now resolves to the values below, which match the portal's tokens
    in web/src/index.css so the two surfaces read as one product.
 
-   Two rules govern the palette:
+   Three rules govern the palette:
 
    1. Blue is the ONLY brand colour. Green / amber / red are reserved for the
       safety classification and must never be used decoratively — in this
@@ -21,6 +21,13 @@ import { platformShadow } from '../utils/platformShadow';
    2. Every colour used for text clears WCAG AA (4.5:1) on white. The previous
       values did not: restricted #F59E0B measured 2.15:1, safe #16A34A 3.30:1,
       and textMuted #94A3B8 2.56:1.
+
+   3. RESTRICTED is split by role, because rules 1 and 2 pull against each other
+      for that one band. Darkening the amber to #B45309 bought AA but left it
+      1.29:1 from unsafe #B91C1C — two dark warm colours, and inspectors read
+      the restricted badge as red. So restrictedSolid carries the colour where
+      the shape is the message and no text sits on it, and restricted carries it
+      where words do.
    ========================================================================= */
 
 export const Colors = {
@@ -47,9 +54,11 @@ export const Colors = {
   safe: '#15803D',           // 5.02:1  (was #16A34A at 3.30:1)
   safeBg: '#F0FDF4',
   safeBorder: '#BBF7D0',
-  restricted: '#B45309',     // 5.02:1  (was #F59E0B at 2.15:1)
-  restrictedBg: '#FFFBEB',
-  restrictedBorder: '#FDE68A',
+  restricted: '#946200',     // 5.24:1 on white, 4.71:1 on restrictedBg — hue 40°
+  restrictedSolid: '#F59E0B',// fills only, no text: 3.01:1 from unsafe (was 1.29:1)
+  restrictedDeep: '#7C4A00', // gradient ends, deep icon tints: white on it 7.40:1
+  restrictedBg: '#FEF3C7',
+  restrictedBorder: '#FCD34D',
   unsafe: '#B91C1C',         // 6.47:1
   unsafeBg: '#FEF2F2',
   unsafeBorder: '#FECACA',
@@ -57,8 +66,8 @@ export const Colors = {
   // -- Feedback ------------------------------------------------------------
   success: '#15803D',
   successBg: '#F0FDF4',
-  warning: '#B45309',
-  warningBg: '#FFFBEB',
+  warning: '#946200',
+  warningBg: '#FEF3C7',
   error: '#B91C1C',
   errorBg: '#FEF2F2',
   info: '#1B4D8E',
@@ -71,7 +80,7 @@ export const Colors = {
   statusPendingSync: '#475569',
   statusSyncing: '#1B4D8E',
   statusFailed: '#B91C1C',
-  statusPendingReview: '#B45309',
+  statusPendingReview: '#946200',
   statusReviewed: '#15803D',
   statusReportGenerated: '#1B4D8E',
 } as const;

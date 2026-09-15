@@ -1528,8 +1528,8 @@ const styles = StyleSheet.create({
   },
   gpsWarnBox: {
     borderWidth: 1,
-    borderColor: '#FCD34D',
-    backgroundColor: '#FFFBEB',
+    borderColor: Colors.restrictedBorder,
+    backgroundColor: Colors.restrictedBg,
     borderRadius: WizardTheme.radius.sm,
     padding: WizardTheme.spacing.sm,
     gap: 8,
@@ -1541,7 +1541,7 @@ const styles = StyleSheet.create({
   },
   gpsWarnText: {
     fontSize: WizardTheme.typography.helper,
-    color: '#92400E',
+    color: Colors.restrictedDeep,
     fontWeight: '600',
   },
   gpsActionRow: {

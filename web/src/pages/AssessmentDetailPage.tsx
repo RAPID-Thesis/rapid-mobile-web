@@ -99,7 +99,7 @@ function ProbabilityRow({ label, value }: { label: string; value: number }) {
   const severity = severityOf(label);
   const fill = {
     safe: 'bg-safe',
-    restricted: 'bg-restricted',
+    restricted: 'bg-restricted-solid',
     unsafe: 'bg-unsafe',
     unknown: 'bg-brand-500',
   }[severity];

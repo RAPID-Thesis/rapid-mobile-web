@@ -34,10 +34,15 @@ const BARANGAY_FOCUS_ZOOM = 16;
  * Marker colours are the reserved safety palette, matching the badges in the
  * rest of the portal so a red dot on the map means exactly what a red badge in
  * the worklist means.
+ *
+ * Literal hex rather than the CSS tokens because Leaflet builds these markers as
+ * raw SVG strings outside the Tailwind-aware tree. Moderate takes
+ * --color-restricted-solid (#f59e0b), not --color-restricted: a dot carries no
+ * text, and at marker size the darker gold was hard to tell from the red one.
  */
 const MARKER_COLOR = {
   high: '#b91c1c',
-  moderate: '#b45309',
+  moderate: '#f59e0b',
   low: '#15803d',
 } as const;
 

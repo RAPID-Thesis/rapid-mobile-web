@@ -6,7 +6,7 @@
    One source of truth for the portal's visual language. Mirrors
    mobile/constants/theme.ts so the two surfaces stay in step.
 
-   Two rules that govern this palette:
+   Three rules govern this palette:
 
    1. Blue is the ONLY brand colour. Green / amber / red are reserved for the
       ATC-20 safety classification (SAFE / RESTRICTED / UNSAFE) and must never
@@ -16,6 +16,15 @@
    2. Every value used for text clears WCAG AA (4.5:1) on white. The previous
       palette did not — restricted #F59E0B measured 2.15:1, safe #16A34A
       3.30:1, and muted #94A3B8 2.56:1.
+
+   3. RESTRICTED is split by role, because rules 1 and 2 pull against each other
+      for that one band. Darkening the amber to #B45309 bought AA but left it
+      1.29:1 from unsafe #B91C1C — two dark warm colours side by side in the
+      dashboard bars, the heatmap legend and the filter menu, which is why it
+      read as red. So: restricted-solid carries the colour where the shape is
+      the message and no text sits on it, and restricted carries it where words
+      do. The dot and the label no longer have to be the same swatch to mean the
+      same thing.
    ========================================================================= */
 
 @theme {
@@ -46,9 +55,16 @@
   --color-safe-bg: #f0fdf4;
   --color-safe-line: #bbf7d0;
 
-  --color-restricted: #b45309;    /* 5.02:1 */
-  --color-restricted-bg: #fffbeb;
-  --color-restricted-line: #fde68a;
+  /* Text and icons — gold rather than rust: hue 40° against unsafe's 0°. */
+  --color-restricted: #946200;          /* 5.24:1 on white, 4.71:1 on -bg */
+  /* Fills that carry no text: map markers, bars, dots, stacked segments.
+     3.01:1 against unsafe, where #b45309 managed 1.29:1. Never put white text
+     on this (2.15:1) — use --color-ink, or reach for --color-restricted. */
+  --color-restricted-solid: #f59e0b;
+  /* Gradient ends and deep icon tints; white on it is 7.40:1. */
+  --color-restricted-deep: #7c4a00;
+  --color-restricted-bg: #fef3c7;
+  --color-restricted-line: #fcd34d;
 
   --color-unsafe: #b91c1c;        /* 6.47:1 */
   --color-unsafe-bg: #fef2f2;
@@ -57,8 +73,8 @@
   /* -- Feedback ------------------------------------------------------------ */
   --color-info: #1b4d8e;
   --color-info-bg: #e8f1fc;
-  --color-warn: #b45309;
-  --color-warn-bg: #fffbeb;
+  --color-warn: #946200;
+  --color-warn-bg: #fef3c7;
   --color-danger: #b91c1c;
   --color-danger-bg: #fef2f2;
   --color-ok: #15803d;

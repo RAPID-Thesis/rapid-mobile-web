@@ -83,7 +83,7 @@ export default function SyncScreen() {
     <View style={styles.container}>
       {!apiReady ? (
         <View style={styles.configWarning}>
-          <Ionicons name="warning-outline" size={22} color="#92400E" />
+          <Ionicons name="warning-outline" size={22} color={Colors.restrictedDeep} />
           <View style={styles.configWarningText}>
             <Text style={styles.configWarningTitle}>Backend URL not set</Text>
             <TextBody style={styles.configWarningBody}>
@@ -208,14 +208,14 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.md,
     marginTop: Spacing.md,
     padding: Spacing.md,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: Colors.restrictedBg,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: '#F59E0B',
+    borderColor: Colors.restrictedSolid,
   },
   configWarningText: { flex: 1 },
-  configWarningTitle: { fontSize: FontSize.sm, fontWeight: '800', color: '#92400E' },
-  configWarningBody: { marginTop: 4, fontSize: FontSize.xs, color: '#78350F' },
+  configWarningTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.restrictedDeep },
+  configWarningBody: { marginTop: 4, fontSize: FontSize.xs, color: Colors.restrictedDeep },
   signInBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',

@@ -138,7 +138,7 @@ export default function DashboardPage() {
       key: 'restricted',
       label: names.restricted,
       count: counts.restricted,
-      bar: 'bg-restricted',
+      bar: 'bg-restricted-solid',
       text: 'text-restricted',
       to: `/assessments?class=restricted${phaseQuery}`,
     },
@@ -396,7 +396,7 @@ export default function DashboardPage() {
                       style={{ width: `${(b.unsafe / b.total) * 100}%` }}
                     />
                     <div
-                      className="bg-restricted"
+                      className="bg-restricted-solid"
                       style={{ width: `${(b.restricted / b.total) * 100}%` }}
                     />
                   </div>
