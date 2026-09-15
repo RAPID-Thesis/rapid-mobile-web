@@ -76,3 +76,41 @@ export const SJDM_DISTRICT_OPTIONS: SjdmDistrict[] = ['District 1', 'District 2'
 export function getBarangaysForDistrict(district: SjdmDistrict): readonly string[] {
   return SJDM_DISTRICTS[district];
 }
+
+/**
+ * Approximate SJDM municipal bounds — excludes the Caloocan / QC areas to the
+ * south. Mirrors web/src/constants/sjdmLocations.ts.
+ */
+export const SJDM_BOUNDS = {
+  south: 14.748,
+  north: 14.872,
+  west: 120.992,
+  east: 121.088,
+} as const;
+
+export function isWithinSjdm(lat: number, lng: number): boolean {
+  return (
+    lat >= SJDM_BOUNDS.south &&
+    lat <= SJDM_BOUNDS.north &&
+    lng >= SJDM_BOUNDS.west &&
+    lng <= SJDM_BOUNDS.east
+  );
+}
+
+/**
+ * The district a barangay belongs to, or null if the name is not one of ours.
+ *
+ * The wizard's barangay picker is filtered by district, so anything that sets a
+ * barangay from outside that picker — a reverse-geocoded GPS fix, a tapped
+ * address suggestion — has to set the district too or the picker will disagree
+ * with the field beside it.
+ */
+export function getDistrictForBarangay(barangay: string): SjdmDistrict | null {
+  const needle = barangay.trim().toLowerCase();
+  for (const district of SJDM_DISTRICT_OPTIONS) {
+    for (const name of SJDM_DISTRICTS[district] as readonly string[]) {
+      if (name.toLowerCase() === needle) return district;
+    }
+  }
+  return null;
+}

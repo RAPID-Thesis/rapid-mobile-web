@@ -5,11 +5,24 @@ export interface LocationPermissionResult {
   canAskAgain: boolean;
 }
 
+/**
+ * Where a coordinate came from.
+ *
+ * The three are not interchangeable and the record should not pretend they are:
+ * a GPS fix is a measurement with an accuracy figure, a dropped pin is the
+ * inspector's own judgement about where the building is, and a search result
+ * locates a named place that may be a street or a whole barangay. This rides
+ * along into `structural_data` as `location_source` so the portal can tell them
+ * apart after the fact.
+ */
+export type LocationSource = 'gps' | 'map-pin' | 'search';
+
 export interface LocationFix {
   latitude: number;
   longitude: number;
   accuracy_m: number | null;
   capturedAt: string;
+  source: LocationSource;
 }
 
 interface CurrentFixOptions {
@@ -32,6 +45,7 @@ function toFix(coords: Location.LocationObjectCoords): LocationFix {
     longitude: coords.longitude,
     accuracy_m: typeof coords.accuracy === 'number' ? coords.accuracy : null,
     capturedAt: new Date().toISOString(),
+    source: 'gps',
   };
 }
 

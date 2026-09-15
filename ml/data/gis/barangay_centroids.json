@@ -1,0 +1,606 @@
+[
+ {
+  "name": "Poblacion",
+  "district": "District 1",
+  "lat": 14.814953,
+  "lon": 121.041792,
+  "source": "centroid"
+ },
+ {
+  "name": "Poblacion 1",
+  "district": "District 1",
+  "lat": 14.814953,
+  "lon": 121.041792,
+  "source": "centroid"
+ },
+ {
+  "name": "Francisco Homes \u2013 Narra",
+  "district": "District 1",
+  "lat": 14.808559,
+  "lon": 121.056878,
+  "source": "centroid",
+  "matched": "Narra",
+  "approx": true
+ },
+ {
+  "name": "Francisco Homes \u2013 Mulawin",
+  "district": "District 1",
+  "lat": 14.806522,
+  "lon": 121.066897,
+  "source": "polygon",
+  "polygon": [
+   [
+    121.06682,
+    14.80648
+   ],
+   [
+    121.06682,
+    14.80648
+   ]
+  ]
+ },
+ {
+  "name": "Francisco Homes \u2013 Yakal",
+  "district": "District 1",
+  "lat": 14.807461,
+  "lon": 121.05428,
+  "source": "polygon",
+  "polygon": [
+   [
+    121.05423,
+    14.80742
+   ],
+   [
+    121.05423,
+    14.80742
+   ]
+  ]
+ },
+ {
+  "name": "Francisco Homes \u2013 Guijo",
+  "district": "District 1",
+  "lat": 14.814289,
+  "lon": 121.059652,
+  "source": "polygon",
+  "polygon": [
+   [
+    121.05959,
+    14.81425
+   ],
+   [
+    121.05959,
+    14.81425
+   ]
+  ]
+ },
+ {
+  "name": "Gumaok East",
+  "district": "District 1",
+  "lat": 14.799272,
+  "lon": 121.067786,
+  "source": "centroid"
+ },
+ {
+  "name": "Gumaok West",
+  "district": "District 1",
+  "lat": 14.799662,
+  "lon": 121.060406,
+  "source": "centroid"
+ },
+ {
+  "name": "Gumaok Central",
+  "district": "District 1",
+  "lat": 14.795151,
+  "lon": 121.072183,
+  "source": "centroid"
+ },
+ {
+  "name": "Graceville",
+  "district": "District 1",
+  "lat": 14.787419,
+  "lon": 121.060819,
+  "source": "centroid"
+ },
+ {
+  "name": "Gaya-gaya",
+  "district": "District 1",
+  "lat": 14.794973,
+  "lon": 121.052335,
+  "source": "centroid"
+ },
+ {
+  "name": "Sto. Cristo",
+  "district": "District 1",
+  "lat": 14.825311,
+  "lon": 121.078907,
+  "source": "centroid",
+  "matched": "Santo Cristo"
+ },
+ {
+  "name": "Tungkong Mangga",
+  "district": "District 1",
+  "lat": 14.78912,
+  "lon": 121.074676,
+  "source": "centroid"
+ },
+ {
+  "name": "Dulong Bayan",
+  "district": "District 1",
+  "lat": 14.82681,
+  "lon": 121.044677,
+  "source": "centroid"
+ },
+ {
+  "name": "Maharlika",
+  "district": "District 1",
+  "lat": 14.795151,
+  "lon": 121.072183,
+  "source": "centroid"
+ },
+ {
+  "name": "San Manuel",
+  "district": "District 1",
+  "lat": 14.781724,
+  "lon": 121.068475,
+  "source": "centroid"
+ },
+ {
+  "name": "Kaypian",
+  "district": "District 1",
+  "lat": 14.821589,
+  "lon": 121.062591,
+  "source": "centroid"
+ },
+ {
+  "name": "San Isidro",
+  "district": "District 1",
+  "lat": 14.792227,
+  "lon": 121.059066,
+  "source": "polygon",
+  "polygon": [
+   [
+    121.05892,
+    14.79217
+   ],
+   [
+    121.05892,
+    14.79217
+   ]
+  ]
+ },
+ {
+  "name": "Muzon Proper",
+  "district": "District 1",
+  "lat": 14.803953,
+  "lon": 121.034121,
+  "source": "centroid"
+ },
+ {
+  "name": "Muzon East",
+  "district": "District 1",
+  "lat": 14.810987,
+  "lon": 121.038916,
+  "source": "centroid"
+ },
+ {
+  "name": "Muzon West",
+  "district": "District 1",
+  "lat": 14.803419,
+  "lon": 121.031711,
+  "source": "centroid"
+ },
+ {
+  "name": "Muzon South",
+  "district": "District 1",
+  "lat": 14.792386,
+  "lon": 121.035895,
+  "source": "centroid"
+ },
+ {
+  "name": "Minuyan Proper",
+  "district": "District 2",
+  "lat": 14.842766,
+  "lon": 121.07861,
+  "source": "centroid"
+ },
+ {
+  "name": "Minuyan I",
+  "district": "District 2",
+  "lat": 14.850805,
+  "lon": 121.079826,
+  "source": "centroid"
+ },
+ {
+  "name": "Minuyan II",
+  "district": "District 2",
+  "lat": 14.843195,
+  "lon": 121.075566,
+  "source": "centroid"
+ },
+ {
+  "name": "Minuyan III",
+  "district": "District 2",
+  "lat": 14.846543,
+  "lon": 121.07178,
+  "source": "centroid"
+ },
+ {
+  "name": "Minuyan IV",
+  "district": "District 2",
+  "lat": 14.846557,
+  "lon": 121.074336,
+  "source": "centroid"
+ },
+ {
+  "name": "Minuyan V",
+  "district": "District 2",
+  "lat": 14.851275,
+  "lon": 121.074642,
+  "source": "centroid"
+ },
+ {
+  "name": "Bagong Buhay I",
+  "district": "District 2",
+  "lat": 14.855772,
+  "lon": 121.058684,
+  "source": "centroid"
+ },
+ {
+  "name": "Bagong Buhay II",
+  "district": "District 2",
+  "lat": 14.859038,
+  "lon": 121.05883,
+  "source": "centroid"
+ },
+ {
+  "name": "Bagong Buhay III",
+  "district": "District 2",
+  "lat": 14.854298,
+  "lon": 121.062767,
+  "source": "centroid"
+ },
+ {
+  "name": "San Martin I",
+  "district": "District 2",
+  "lat": 14.863068,
+  "lon": 121.058537,
+  "source": "centroid"
+ },
+ {
+  "name": "San Martin II",
+  "district": "District 2",
+  "lat": 14.862346,
+  "lon": 121.05564,
+  "source": "centroid"
+ },
+ {
+  "name": "San Martin III",
+  "district": "District 2",
+  "lat": 14.861531,
+  "lon": 121.055192,
+  "source": "centroid"
+ },
+ {
+  "name": "San Martin IV",
+  "district": "District 2",
+  "lat": 14.860668,
+  "lon": 121.053195,
+  "source": "centroid"
+ },
+ {
+  "name": "Sta. Cruz I",
+  "district": "District 2",
+  "lat": 14.852086,
+  "lon": 121.052679,
+  "source": "centroid"
+ },
+ {
+  "name": "Sta. Cruz II",
+  "district": "District 2",
+  "lat": 14.854442,
+  "lon": 121.051654,
+  "source": "centroid",
+  "matched": "Santa Cruz II"
+ },
+ {
+  "name": "Sta. Cruz III",
+  "district": "District 2",
+  "lat": 14.85571,
+  "lon": 121.052089,
+  "source": "centroid",
+  "matched": "Santa Cruz III"
+ },
+ {
+  "name": "Sta. Cruz IV",
+  "district": "District 2",
+  "lat": 14.857812,
+  "lon": 121.050792,
+  "source": "centroid",
+  "matched": "Santa Cruz IV"
+ },
+ {
+  "name": "Sta. Cruz V",
+  "district": "District 2",
+  "lat": 14.856658,
+  "lon": 121.047748,
+  "source": "centroid"
+ },
+ {
+  "name": "Fatima I",
+  "district": "District 2",
+  "lat": 14.846746,
+  "lon": 121.045031,
+  "source": "centroid"
+ },
+ {
+  "name": "Fatima II",
+  "district": "District 2",
+  "lat": 14.843253,
+  "lon": 121.044045,
+  "source": "centroid"
+ },
+ {
+  "name": "Fatima III",
+  "district": "District 2",
+  "lat": 14.845337,
+  "lon": 121.045362,
+  "source": "centroid"
+ },
+ {
+  "name": "Fatima IV",
+  "district": "District 2",
+  "lat": 14.843492,
+  "lon": 121.046532,
+  "source": "centroid"
+ },
+ {
+  "name": "Fatima V",
+  "district": "District 2",
+  "lat": 14.847733,
+  "lon": 121.050829,
+  "source": "centroid"
+ },
+ {
+  "name": "Citrus",
+  "district": "District 2",
+  "lat": 14.849182,
+  "lon": 121.064727,
+  "source": "centroid"
+ },
+ {
+  "name": "San Pedro",
+  "district": "District 2",
+  "lat": 14.846086,
+  "lon": 121.055874,
+  "source": "centroid"
+ },
+ {
+  "name": "Sapang Palay Proper",
+  "district": "District 2",
+  "lat": 14.838804,
+  "lon": 121.0426,
+  "source": "polygon",
+  "polygon": [
+   [
+    121.02967,
+    14.8508
+   ],
+   [
+    121.0305,
+    14.84846
+   ],
+   [
+    121.03225,
+    14.84763
+   ],
+   [
+    121.0338,
+    14.84801
+   ],
+   [
+    121.03477,
+    14.84692
+   ],
+   [
+    121.03422,
+    14.84519
+   ],
+   [
+    121.03295,
+    14.84386
+   ],
+   [
+    121.03375,
+    14.84052
+   ],
+   [
+    121.033,
+    14.83887
+   ],
+   [
+    121.03308,
+    14.83631
+   ],
+   [
+    121.03709,
+    14.83414
+   ],
+   [
+    121.03823,
+    14.8313
+   ],
+   [
+    121.04321,
+    14.83032
+   ],
+   [
+    121.04492,
+    14.83116
+   ],
+   [
+    121.04581,
+    14.83082
+   ],
+   [
+    121.04666,
+    14.82759
+   ],
+   [
+    121.04761,
+    14.82799
+   ],
+   [
+    121.04995,
+    14.8334
+   ],
+   [
+    121.0517,
+    14.83133
+   ],
+   [
+    121.0526,
+    14.83105
+   ],
+   [
+    121.0535,
+    14.83172
+   ],
+   [
+    121.05651,
+    14.83727
+   ],
+   [
+    121.05606,
+    14.83754
+   ],
+   [
+    121.05645,
+    14.8394
+   ],
+   [
+    121.05799,
+    14.83977
+   ],
+   [
+    121.05837,
+    14.84159
+   ],
+   [
+    121.06011,
+    14.84368
+   ],
+   [
+    121.05945,
+    14.84473
+   ],
+   [
+    121.04294,
+    14.84281
+   ],
+   [
+    121.04281,
+    14.84725
+   ],
+   [
+    121.04192,
+    14.84864
+   ],
+   [
+    121.04087,
+    14.85366
+   ],
+   [
+    121.0391,
+    14.85295
+   ],
+   [
+    121.03724,
+    14.85372
+   ],
+   [
+    121.03532,
+    14.85207
+   ],
+   [
+    121.03355,
+    14.85173
+   ],
+   [
+    121.03256,
+    14.8522
+   ],
+   [
+    121.03066,
+    14.85033
+   ],
+   [
+    121.02967,
+    14.8508
+   ]
+  ]
+ },
+ {
+  "name": "San Martin De Porres",
+  "district": "District 2",
+  "lat": 14.859007,
+  "lon": 121.066233,
+  "source": "centroid"
+ },
+ {
+  "name": "Assumption",
+  "district": "District 2",
+  "lat": 14.862799,
+  "lon": 121.063807,
+  "source": "centroid"
+ },
+ {
+  "name": "Sto. Nino I",
+  "district": "District 2",
+  "lat": 14.862035,
+  "lon": 121.064202,
+  "source": "centroid"
+ },
+ {
+  "name": "Sto. Nino II",
+  "district": "District 2",
+  "lat": 14.858297,
+  "lon": 121.063161,
+  "source": "centroid",
+  "matched": "Santo Ni\u00f1o II"
+ },
+ {
+  "name": "San Rafael I",
+  "district": "District 2",
+  "lat": 14.853097,
+  "lon": 121.044618,
+  "source": "centroid"
+ },
+ {
+  "name": "San Rafael II",
+  "district": "District 2",
+  "lat": 14.854494,
+  "lon": 121.04594,
+  "source": "centroid"
+ },
+ {
+  "name": "San Rafael III",
+  "district": "District 2",
+  "lat": 14.853777,
+  "lon": 121.044444,
+  "source": "centroid"
+ },
+ {
+  "name": "San Rafael IV",
+  "district": "District 2",
+  "lat": 14.854455,
+  "lon": 121.04431,
+  "source": "centroid"
+ },
+ {
+  "name": "San Rafael V",
+  "district": "District 2",
+  "lat": 14.849921,
+  "lon": 121.04504,
+  "source": "centroid"
+ }
+]

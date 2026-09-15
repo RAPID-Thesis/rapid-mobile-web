@@ -44,9 +44,16 @@ import {
 } from '../../services/location';
 import {
   getBarangaysForDistrict,
+  getDistrictForBarangay,
   SJDM_DISTRICT_OPTIONS,
   type SjdmDistrict,
 } from '../../constants/sjdmLocations';
+import {
+  rememberAddress,
+  reverseGeocode,
+  suggestAddresses,
+  type AddressSuggestion,
+} from '../../services/geocoding';
 
 const STEPS = ['Building Info', 'Photo Capture', 'Structural Data', 'Review'];
 type LocationPicker = 'district' | 'barangay';
@@ -208,6 +215,12 @@ export default function NewAssessmentScreen() {
   const [address, setAddress] = useState('');
   const [district, setDistrict] = useState<SjdmDistrict | ''>('');
   const [barangay, setBarangay] = useState('');
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addressFocused, setAddressFocused] = useState(false);
+  // Suppresses the lookup that would otherwise fire from setAddress() when the
+  // inspector picks a suggestion — without it, choosing a row reopens the list.
+  const [suggestionsMuted, setSuggestionsMuted] = useState(false);
+  const [locationNote, setLocationNote] = useState<string | null>(null);
   const [activeLocationPicker, setActiveLocationPicker] = useState<LocationPicker | null>(null);
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
@@ -363,6 +376,44 @@ export default function NewAssessmentScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   }, [step]);
 
+  /**
+   * Name a fix and fill what the inspector would otherwise retype.
+   *
+   * Never overwrites something already entered — a coordinate is evidence about
+   * where the phone is, not a correction to what the inspector observed. The
+   * note explains where a filled value came from, since an 'approximate' offline
+   * match is a nearest-centroid guess and should read as one.
+   */
+  const applyReverseGeocode = async (latitude: number, longitude: number) => {
+    const result = await reverseGeocode(latitude, longitude).catch(() => null);
+    if (!result) {
+      setLocationNote(null);
+      return;
+    }
+
+    setAddress((current) => {
+      if (current.trim() || !result.address) return current;
+      setSuggestionsMuted(true);
+      return result.address;
+    });
+
+    if (result.barangay) {
+      const resolvedDistrict = result.district ?? getDistrictForBarangay(result.barangay);
+      // District first: the barangay picker is filtered by it, so setting the
+      // barangay against a stale district leaves the two fields disagreeing.
+      if (resolvedDistrict) setDistrict((current) => current || resolvedDistrict);
+      setBarangay((current) => current || result.barangay!);
+    }
+
+    setLocationNote(
+      result.precision === 'approximate'
+        ? `Nearest barangay offline: ${result.barangay}. Check it before continuing.`
+        : result.source === 'offline'
+          ? `Barangay identified offline: ${result.barangay}.`
+          : 'Address filled from your location.',
+    );
+  };
+
   const refreshGpsFix = async () => {
     setGpsBypassed(false);
     setGpsStatus('requesting');
@@ -382,6 +433,7 @@ export default function NewAssessmentScreen() {
       }
       setCoords(fix);
       setGpsStatus('ready');
+      void applyReverseGeocode(fix.latitude, fix.longitude);
     } catch {
       setCoords(null);
       setGpsStatus('failed');
@@ -391,6 +443,69 @@ export default function NewAssessmentScreen() {
   useEffect(() => {
     void refreshGpsFix();
   }, []);
+
+  /**
+   * Debounced address lookup.
+   *
+   * 350 ms is long enough that a normal typing cadence produces one request per
+   * pause rather than one per keystroke, which matters because Nominatim's usage
+   * policy allows one request per second and the service paces to match.
+   */
+  useEffect(() => {
+    if (suggestionsMuted) {
+      setSuggestionsMuted(false);
+      return;
+    }
+    if (!addressFocused || address.trim().length < 2) {
+      setAddressSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void suggestAddresses(address)
+        .then((results) => {
+          if (!cancelled) setAddressSuggestions(results);
+        })
+        .catch(() => {
+          if (!cancelled) setAddressSuggestions([]);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // suggestionsMuted is read as a one-shot latch, not a dependency to react to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, addressFocused]);
+
+  const applySuggestion = (suggestion: AddressSuggestion) => {
+    setSuggestionsMuted(true);
+    setAddress(suggestion.label);
+    setAddressSuggestions([]);
+
+    if (suggestion.barangay) {
+      const resolvedDistrict =
+        suggestion.district ?? getDistrictForBarangay(suggestion.barangay) ?? null;
+      if (resolvedDistrict) setDistrict(resolvedDistrict);
+      setBarangay(suggestion.barangay);
+    }
+
+    // A suggestion carries coordinates, but they locate the *place* rather than
+    // the building. Never let one overwrite a real GPS fix.
+    if (suggestion.latitude != null && suggestion.longitude != null && !coords) {
+      setCoords({
+        latitude: suggestion.latitude,
+        longitude: suggestion.longitude,
+        accuracy_m: null,
+        capturedAt: new Date().toISOString(),
+        source: 'search',
+      });
+      setGpsStatus('ready');
+      setLocationNote('Location taken from the address you picked — confirm it on the map.');
+    }
+  };
 
   const openCapture = () => setCameraOpen(true);
 
@@ -448,6 +563,10 @@ export default function NewAssessmentScreen() {
         photoCount: capturedPhotos.length,
         gps_accuracy_m: coords?.accuracy_m ?? null,
         gps_captured_at: coords?.capturedAt ?? null,
+        // How the coordinate was obtained. A dropped pin and a satellite fix are
+        // both legitimate, but a reviewer weighing a heatmap cluster should be
+        // able to tell which one placed the marker.
+        location_source: coords?.source ?? null,
         // Site values the bundled geo grid resolves from the GPS fix. They already
         // feed the Random Forest; recording them here too means the portal can show
         // the same site context the inspector saw, instead of an em dash -- the API
@@ -518,6 +637,10 @@ export default function NewAssessmentScreen() {
 
       const saved = await enqueueOutbox({ input, localPrediction, localActionPlan, localPriorityScore });
       void processOutbox();
+      // Feeds the offline suggestion index. Field teams re-canvass the same
+      // subdivisions, so today's submissions are tomorrow's autocomplete when
+      // there is no signal to reach a geocoder.
+      void rememberAddress(input.address, input.barangay);
       // Name the reason when the heuristic ran. "Heuristic fallback" on its own told
       // nobody whether the models were missing, corrupt, or simply not loaded yet.
       const usedMl = localPrediction.source === 'device-ml-fusion';
@@ -637,9 +760,61 @@ export default function NewAssessmentScreen() {
               style={styles.input}
               value={address}
               onChangeText={setAddress}
+              onFocus={() => setAddressFocused(true)}
+              // Delayed so a tap on a suggestion row registers before the list
+              // unmounts; without it the blur wins the race and the tap is lost.
+              onBlur={() => setTimeout(() => setAddressFocused(false), 150)}
               placeholder="Street address"
               placeholderTextColor={WizardTheme.colors.textMuted}
+              autoCorrect={false}
             />
+            {addressFocused && addressSuggestions.length > 0 ? (
+              <View style={styles.suggestionList}>
+                {addressSuggestions.map((suggestion, index) => (
+                  <TouchableOpacity
+                    key={`${suggestion.source}-${suggestion.label}`}
+                    style={[styles.suggestionRow, index === 0 && styles.suggestionRowFirst]}
+                    onPress={() => applySuggestion(suggestion)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={
+                        suggestion.source === 'recent'
+                          ? 'time-outline'
+                          : suggestion.source === 'barangay'
+                            ? 'map-outline'
+                            : 'location-outline'
+                      }
+                      size={16}
+                      color={
+                        suggestion.source === 'online'
+                          ? WizardTheme.colors.primary
+                          : Colors.textMuted
+                      }
+                    />
+                    <View style={styles.suggestionText}>
+                      <Text style={styles.suggestionLabel} numberOfLines={1}>
+                        {suggestion.label}
+                      </Text>
+                      {suggestion.detail ? (
+                        <Text style={styles.suggestionDetail} numberOfLines={1}>
+                          {suggestion.detail}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                {addressSuggestions.every((s) => s.source !== 'online') ? (
+                  // Say which index answered. Offline the list is barangays and
+                  // past entries only, so an inspector who expected a street
+                  // match knows why it is not there.
+                  <Text style={styles.suggestionFooter}>
+                    Offline — showing saved addresses and barangays
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            {locationNote ? <Text style={styles.locationNote}>{locationNote}</Text> : null}
             <View style={styles.gpsBox}>
               <Text style={styles.gpsTitle}>GPS coordinates *</Text>
               <Text style={styles.gpsHint}>
@@ -1122,6 +1297,52 @@ const styles = StyleSheet.create({
   inputReadOnly: {
     backgroundColor: WizardTheme.colors.background,
     color: WizardTheme.colors.text,
+  },
+  suggestionList: {
+    marginTop: -WizardTheme.spacing.sm,
+    marginBottom: WizardTheme.spacing.sm,
+    borderWidth: 1,
+    borderColor: WizardTheme.colors.border,
+    borderRadius: WizardTheme.radius.md,
+    backgroundColor: WizardTheme.colors.card,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: WizardTheme.spacing.sm,
+    paddingHorizontal: WizardTheme.spacing.md,
+    // Gloved hands on a field device: keep the row at the minimum touch target.
+    minHeight: MinTouchTarget,
+    borderTopWidth: 1,
+    borderTopColor: WizardTheme.colors.border,
+  },
+  suggestionRowFirst: {
+    borderTopWidth: 0,
+  },
+  suggestionText: {
+    flex: 1,
+  },
+  suggestionLabel: {
+    fontSize: WizardTheme.typography.body,
+    color: WizardTheme.colors.text,
+  },
+  suggestionDetail: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+  },
+  suggestionFooter: {
+    paddingHorizontal: WizardTheme.spacing.md,
+    paddingVertical: 6,
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.textMuted,
+    backgroundColor: WizardTheme.colors.background,
+  },
+  locationNote: {
+    marginTop: -WizardTheme.spacing.sm,
+    marginBottom: WizardTheme.spacing.md,
+    fontSize: WizardTheme.typography.helper,
+    color: Colors.restricted,
   },
   buildingUseReadOnly: {
     justifyContent: 'center',
