@@ -171,8 +171,19 @@ export async function evaluateImageTensor(rgb: Uint8Array): Promise<ImageGateRes
     if (threshold == null || mass <= threshold) continue;
 
     const verdict: GateVerdict = blocking.has(bucket) ? 'block' : 'warn';
-    // A block outranks a warn; between equals, the more confident bucket wins.
-    if (!fired || (verdict === 'block' && fired.verdict === 'warn') || mass > fired.score) {
+
+    // Severity first, mass only as a tie-break *within* a severity. Comparing
+    // mass across severities lets a confident warn displace a block: a person
+    // holding a document scores person 0.45 (block) and screen_document 0.80
+    // (warn), and the higher number would win. The photo would then be merely
+    // warned about -- and predictOnDevice only drops on 'block', so a portrait
+    // would reach the classifier, which is the exact failure this gate exists
+    // to prevent.
+    const outranks =
+      !fired ||
+      (verdict === 'block' && fired.verdict === 'warn') ||
+      (verdict === fired.verdict && mass > fired.score);
+    if (outranks) {
       fired = { bucket, score: mass, verdict };
     }
   }

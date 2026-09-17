@@ -166,12 +166,24 @@ def _score_all(gate: Gate, paths: list[Path], label: str) -> list[dict[str, floa
 
 
 def _verdict(masses: dict[str, float], spec: dict) -> str:
+    """Severity of the strongest bucket that fired.
+
+    Mirrors mobile/services/ml/imageGate.ts. Returning on the first bucket over
+    threshold would make the answer depend on dict ordering -- it happens to
+    agree today only because every blocking bucket is declared before the
+    advisory one. Scanning all of them and taking the worst severity does not
+    rely on that.
+    """
     blocking = set(spec.get("blocking", []))
     thresholds = spec["thresholds"]
+    worst = "accept"
     for name, mass in masses.items():
-        if mass > thresholds.get(name, 1.0):
-            return "block" if name in blocking else "warn"
-    return "accept"
+        if mass <= thresholds.get(name, 1.0):
+            continue
+        if name in blocking:
+            return "block"
+        worst = "warn"
+    return worst
 
 
 def _probe(gate: Gate, spec: dict, folder: Path) -> int:

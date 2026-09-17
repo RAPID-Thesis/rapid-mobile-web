@@ -618,11 +618,13 @@ def predict_validity(image: bytes) -> dict[str, Any]:
         if threshold is None or mass <= threshold:
             continue
         verdict = "block" if bucket in blocking else "warn"
-        # A block outranks a warn; between equals the more confident bucket wins.
+        # Severity first, mass only as a tie-break *within* a severity -- see the
+        # note in mobile/services/ml/imageGate.ts. Comparing mass across
+        # severities lets a confident warn displace a block.
         if (
             fired is None
             or (verdict == "block" and fired["verdict"] == "warn")
-            or mass > fired["score"]
+            or (verdict == fired["verdict"] and mass > fired["score"])
         ):
             fired = {"verdict": verdict, "bucket": bucket, "score": mass}
 
