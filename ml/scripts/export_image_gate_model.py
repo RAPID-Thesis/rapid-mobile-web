@@ -91,16 +91,25 @@ IMG_SIZE = 224
 # ImageNet-1k has no "person" class, so a photo of a person resolves to what
 # they are wearing. That is the reliable signal a human is the subject.
 PERSON = [
-    "jersey", "suit", "sunglasses", "sunglass", "wig", "ski_mask", "bow_tie",
-    "brassiere", "maillot", "bathing_cap", "bearskin", "bonnet", "cardigan",
-    "cowboy_hat", "crash_helmet", "football_helmet", "fur_coat", "gown",
-    "hair_spray", "jean", "kimono", "lab_coat", "miniskirt", "military_uniform",
-    "neck_brace", "overskirt", "pajama", "poncho", "sarong", "shower_cap",
-    "sombrero", "stole", "swimming_trunks", "sweatshirt", "trench_coat",
-    "academic_gown", "abaya", "diaper", "mask", "face_powder", "lipstick",
-    "Windsor_tie", "necklace", "sandal", "running_shoe", "Loafer",
-    "cowboy_boot", "mortarboard", "bib",
+    "abaya", "academic_gown", "apron", "Band_Aid", "bathing_cap", "bearskin",
+    "bib", "bikini", "bolo_tie", "bonnet", "bow_tie", "brassiere", "cardigan",
+    "clog", "cowboy_boot", "cowboy_hat", "crash_helmet", "diaper",
+    "face_powder", "feather_boa", "football_helmet", "fur_coat", "gasmask",
+    "gown", "groom", "hair_slide", "hair_spray", "hoopskirt", "jean", "jersey",
+    "kimono", "lab_coat", "lipstick", "Loafer", "maillot", "mask",
+    "military_uniform", "miniskirt", "mitten", "mortarboard", "neck_brace",
+    "necklace", "overskirt", "oxygen_mask", "pajama", "pickelhaube", "poncho",
+    "running_shoe", "sandal", "sarong", "shower_cap", "ski_mask", "sock",
+    "sombrero", "stethoscope", "stole", "suit", "sunglass", "sunglasses",
+    "sunscreen", "sweatshirt", "swimming_trunks", "trench_coat", "vestment",
+    "wig", "Windsor_tie",
 ]
+# Deliberately NOT in PERSON, despite matching a clothing keyword search:
+#   Cardigan      capitalised, it is the Welsh Corgi, not the garment
+#   thatch        a roof -- the one class here most likely on a real building
+#   shoe_shop, barber_chair, folding_chair, rocking_chair, bottlecap,
+#   lens_cap, measuring_cup, hatchet, syringe
+#                 objects named like apparel, or furniture a person sits on
 
 FOOD = [
     "pizza", "cheeseburger", "hotdog", "bagel", "pretzel", "ice_cream",
@@ -157,7 +166,13 @@ def _load_class_index() -> dict[int, str]:
 
 
 def _build_buckets(class_index: dict[int, str]) -> dict:
-    by_name: dict[str, int] = {name: index for index, name in class_index.items()}
+    # name -> every index carrying it. ImageNet-1k is not name-unique: `maillot`
+    # is two distinct classes (a swimsuit and a tights/leotard), and a plain
+    # dict comprehension keeps whichever came last, silently halving that
+    # bucket's mass on exactly the photos it exists to catch.
+    by_name: dict[str, list[int]] = {}
+    for index, name in class_index.items():
+        by_name.setdefault(name, []).append(index)
 
     buckets = {
         "person": PERSON,
@@ -185,11 +200,11 @@ def _build_buckets(class_index: dict[int, str]) -> dict:
     for bucket, names in buckets.items():
         chosen = []
         for name in names:
-            index = by_name[name]
-            if index in assigned:
-                continue
-            assigned.add(index)
-            chosen.append(index)
+            for index in by_name[name]:
+                if index in assigned:
+                    continue
+                assigned.add(index)
+                chosen.append(index)
         indices[bucket] = sorted(chosen)
 
     return indices

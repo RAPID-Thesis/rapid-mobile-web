@@ -16,53 +16,71 @@
     "person": [
       399,
       400,
+      411,
+      419,
       433,
       439,
       443,
+      445,
+      451,
       452,
       457,
       459,
       474,
+      502,
       514,
       515,
       518,
       529,
       551,
+      552,
       560,
       568,
+      570,
       578,
+      584,
       585,
+      601,
       608,
       610,
       614,
       617,
       629,
       630,
+      638,
       639,
       643,
       652,
       655,
+      658,
       667,
       678,
       679,
       689,
+      691,
       697,
+      715,
       735,
       770,
       774,
       775,
       793,
       796,
+      806,
       808,
+      823,
       824,
       834,
       836,
       837,
+      838,
       841,
       842,
       869,
+      887,
       903,
-      906
+      906,
+      982
     ],
     "food": [
       441,
@@ -176,18 +194,51 @@
     "vehicle"
   ],
   "thresholds": {
-    "person": 0.6,
-    "food": 0.3,
-    "pet": 0.3,
-    "vehicle": 0.3,
-    "screen_document": 0.8
+    "person": 0.3,
+    "food": 0.15,
+    "pet": 0.15,
+    "vehicle": 0.15,
+    "screen_document": 0.3
   },
   "evaluated_on": {
     "genuine": 1602,
+    "genuine_blocked": 15,
+    "genuine_warned": 15,
+    "false_block_rate": 0.00936,
     "junk": 76,
-    "genuine_blocked": 0,
-    "genuine_warned": 0,
-    "junk_flagged": 3,
-    "note": "Junk set contains no people/food/pets/vehicles; blocking-bucket recall is unmeasured here."
+    "junk_flagged": 8,
+    "shot_negatives": {
+      "cars": {
+        "n": 32,
+        "accept": 0,
+        "warn": 0,
+        "block": 32
+      },
+      "interior": {
+        "n": 31,
+        "accept": 31,
+        "warn": 0,
+        "block": 0
+      },
+      "meals": {
+        "n": 32,
+        "accept": 4,
+        "warn": 0,
+        "block": 28
+      },
+      "paperworks": {
+        "n": 16,
+        "accept": 8,
+        "warn": 8,
+        "block": 0
+      },
+      "peoples": {
+        "n": 32,
+        "accept": 8,
+        "warn": 1,
+        "block": 23
+      }
+    },
+    "note": "Interiors are expected to pass: ATC-20 includes interior damage."
   }
 }

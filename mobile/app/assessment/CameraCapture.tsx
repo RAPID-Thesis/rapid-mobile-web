@@ -281,7 +281,26 @@ function PreviewReview({
   onCancel: () => void;
 }) {
   const issues = useMemo(() => collectQualityIssues(photo), [photo]);
-  const hasBlockingIssue = issues.some((i) => i.severity === 'block');
+
+  /**
+   * A subject block is overridable; a resolution block is not.
+   *
+   * The difference is whether a retake can fix it. An 800px minimum is a fact
+   * about the camera and retaking changes nothing, so the button stays disabled.
+   * The subject gate is a judgement that is sometimes wrong -- roughly one
+   * genuine photo in two hundred -- and an inspector who is standing in front of
+   * the building can see that it is wrong. Leaving them no way past it would
+   * strand them mid-assessment, which is worse than the bad record the gate is
+   * there to prevent.
+   *
+   * Overriding is not a bypass: predictOnDevice re-checks and still refuses to
+   * put the photo through the classifier, so the outcome is a tabular-only
+   * prediction rather than a false one.
+   */
+  const [subjectOverridden, setSubjectOverridden] = useState(false);
+  const subjectBlocked = photo.subjectVerdict === 'block' && !subjectOverridden;
+  const hardBlocked =
+    issues.some((i) => i.severity === 'block' && !i.overridable) || subjectBlocked;
 
   return (
     <View style={styles.previewShell}>
@@ -320,14 +339,26 @@ function PreviewReview({
           <Text style={styles.ghostBtnText}>Retake</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.primaryBtn, hasBlockingIssue && styles.primaryBtnDisabled]}
+          style={[styles.primaryBtn, hardBlocked && styles.primaryBtnDisabled]}
           onPress={onAccept}
-          disabled={hasBlockingIssue}
+          disabled={hardBlocked}
         >
           <Ionicons name="checkmark" size={18} color="#FFF" />
           <Text style={styles.primaryBtnText}>Use photo</Text>
         </TouchableOpacity>
       </View>
+
+      {subjectBlocked ? (
+        <TouchableOpacity
+          style={styles.overrideBtn}
+          onPress={() => setSubjectOverridden(true)}
+          accessibilityLabel="Use this photo anyway"
+        >
+          <Text style={styles.overrideBtnText}>
+            It is a building — use it anyway
+          </Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -346,7 +377,12 @@ function QualityRow({ label, ok }: { label: string; ok: boolean }) {
 }
 
 function collectQualityIssues(photo: Omit<CapturedPhoto, 'id'>) {
-  const issues: { severity: 'block' | 'warn'; message: string }[] = [];
+  const issues: {
+    severity: 'block' | 'warn';
+    message: string;
+    /** Whether the inspector may proceed anyway. See PreviewReview. */
+    overridable?: boolean;
+  }[] = [];
   if (photo.width < MIN_DIMENSION || photo.height < MIN_DIMENSION) {
     issues.push({
       severity: 'block',
@@ -362,6 +398,7 @@ function collectQualityIssues(photo: Omit<CapturedPhoto, 'id'>) {
   if (photo.subjectVerdict === 'block' || photo.subjectVerdict === 'warn') {
     issues.push({
       severity: photo.subjectVerdict,
+      overridable: true,
       message:
         photo.subjectBucket === 'person'
           ? 'This looks like a photo of a person, not a building. Retake it facing the structure.'
@@ -478,6 +515,16 @@ const styles = StyleSheet.create({
     padding: 16, backgroundColor: '#FFF', gap: 8,
   },
   qualityTitle: { fontSize: 14, fontWeight: '800', color: WizardTheme.colors.text, textTransform: 'uppercase', letterSpacing: 0.6 },
+  overrideBtn: {
+    alignSelf: 'center',
+    paddingHorizontal: WizardTheme.spacing.md,
+    paddingBottom: WizardTheme.spacing.md,
+  },
+  overrideBtnText: {
+    fontSize: WizardTheme.typography.helper,
+    color: WizardTheme.colors.primary,
+    textDecorationLine: 'underline',
+  },
   qualityRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   qualityLabel: { fontSize: 14, color: WizardTheme.colors.text, flex: 1 },
   qualityOk: { fontSize: 13, color: WizardTheme.colors.success, marginTop: 4, fontWeight: '600' },

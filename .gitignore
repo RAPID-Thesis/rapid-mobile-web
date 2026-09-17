@@ -51,6 +51,13 @@ ml/data/relabel/
 # Raw training images (user-provided, not redistributable)
 ml/data/images/
 
+# Negatives for the image-validity gate: people, interiors, meals, vehicles,
+# paperwork, one folder each. Same rule as every other image set here -- the
+# photos stay out, the measurement they produced does not. The numbers live in
+# ml/artifacts/mobile/image_gate_buckets.json under "evaluated_on", and
+# eval_image_gate.py reproduces them from a folder of the same shape.
+ml/data/newfeature/
+
 # Generated training CSVs (reproducible from scripts)
 ml/data/train_pre.csv
 ml/data/train_post.csv

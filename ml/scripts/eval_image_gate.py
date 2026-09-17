@@ -58,6 +58,18 @@ BACKEND = REPO_ROOT / "backend"
 BUILDING_LABELS = {"low", "moderate", "high"}
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
+# Purpose-shot negatives, one folder per category. These are the set that makes
+# the evaluation mean anything: image_labels.csv's `junk` rows are screenshots
+# and indoor scenes, and contain no people, meals or vehicles at all.
+NEGATIVE_ROOT = ML_ROOT / "data" / "newfeature"
+
+# Interiors are NOT expected to be blocked, and the summary counts them apart
+# for that reason. ATC-20 post-earthquake evaluation includes interior damage --
+# a cracked ceiling or a failed partition is a legitimate assessment photo, so a
+# gate that rejected rooms would break real inspection work. They are shot here
+# to confirm the gate leaves them alone.
+EXPECTED_ACCEPT = {"interior"}
+
 
 def _load_spec() -> dict:
     path = MOBILE_OUT / "image_gate_buckets.json"
@@ -92,6 +104,20 @@ def _collect_labelled() -> tuple[list[Path], list[Path]]:
         )
 
     return positives, negatives
+
+
+def _collect_negative_categories() -> dict[str, list[Path]]:
+    """The purpose-shot negatives, keyed by folder name."""
+    if not NEGATIVE_ROOT.is_dir():
+        return {}
+    categories: dict[str, list[Path]] = {}
+    for folder in sorted(NEGATIVE_ROOT.iterdir()):
+        if not folder.is_dir():
+            continue
+        images = [p for p in sorted(folder.rglob("*")) if p.suffix.lower() in IMAGE_SUFFIXES]
+        if images:
+            categories[folder.name] = images
+    return categories
 
 
 class Gate:
@@ -181,8 +207,11 @@ def main() -> int:
     parser.add_argument(
         "--max-false-block",
         type=float,
-        default=0.0,
-        help="share of genuine photos a blocking threshold may reject (default 0.0)",
+        default=0.005,
+        help="share of genuine photos a blocking threshold may reject (default 0.005). "
+        "Zero looks safest but buys almost no recall -- at a person threshold of 0.60 "
+        "only 6 of 32 photos of people were caught. 0.5%% is roughly one retake in 200 "
+        "captures, and the capture screen lets an inspector override a block anyway.",
     )
     parser.add_argument("--write-thresholds", action="store_true")
     args = parser.parse_args()
@@ -196,11 +225,19 @@ def main() -> int:
         return _probe(gate, spec, args.probe)
 
     positives, negatives = _collect_labelled()
+    categories = _collect_negative_categories()
     print(f"Genuine assessment photos: {len(positives)}")
-    print(f"Junk (screenshots, indoor scenes, documents): {len(negatives)}\n")
+    print(f"Junk (screenshots, indoor scenes, documents): {len(negatives)}")
+    for name, paths in categories.items():
+        suffix = "  (expected to be accepted)" if name in EXPECTED_ACCEPT else ""
+        print(f"Shot negatives / {name}: {len(paths)}{suffix}")
+    print()
 
     pos = _score_all(gate, positives, "genuine")
     neg = _score_all(gate, negatives, "junk")
+    scored_categories = {
+        name: _score_all(gate, paths, name) for name, paths in categories.items()
+    }
 
     blocking = set(spec.get("blocking", []))
     chosen: dict[str, float] = {}
@@ -217,7 +254,7 @@ def main() -> int:
         # admissible value is the most useful one.
         admissible = [
             t
-            for t in np.arange(0.30, 1.0, 0.05)
+            for t in np.arange(0.15, 1.0, 0.05)
             if (pos_mass > t).mean() <= args.max_false_block
         ]
         threshold = float(admissible[0]) if admissible else 1.0
@@ -238,31 +275,62 @@ def main() -> int:
 
     pos_v, neg_v = verdicts(pos), verdicts(neg)
     print(
-        f"\nGenuine photos: {pos_v['block']} blocked, {pos_v['warn']} warned, "
-        f"{pos_v['accept']} accepted  "
-        f"(false block rate {pos_v['block'] / max(1, len(pos)):.4%})"
+        f"\n{'set':22s} {'n':>5} {'blocked':>9} {'warned':>8} {'accepted':>9}"
     )
     print(
-        f"Junk:           {neg_v['block']} blocked, {neg_v['warn']} warned, "
-        f"{neg_v['accept']} accepted"
+        f"{'genuine (must pass)':22s} {len(pos):5d} {pos_v['block']:9d} "
+        f"{pos_v['warn']:8d} {pos_v['accept']:9d}"
     )
+    print(f"{'junk (screenshots)':22s} {len(neg):5d} {neg_v['block']:9d} "
+          f"{neg_v['warn']:8d} {neg_v['accept']:9d}")
+
+    caught_total = shot_total = 0
+    category_summary: dict[str, dict[str, int]] = {}
+    for name, rows in scored_categories.items():
+        counts = verdicts(rows)
+        category_summary[name] = counts
+        flagged = counts["block"] + counts["warn"]
+        label = name if name not in EXPECTED_ACCEPT else f"{name} (should pass)"
+        print(
+            f"{label:22s} {len(rows):5d} {counts['block']:9d} "
+            f"{counts['warn']:8d} {counts['accept']:9d}"
+            f"   {'' if name in EXPECTED_ACCEPT else f'caught {flagged / max(1, len(rows)):.0%}'}"
+        )
+        if name not in EXPECTED_ACCEPT:
+            caught_total += flagged
+            shot_total += len(rows)
+
+    false_block = pos_v["block"] / max(1, len(pos))
     print(
-        "\nBaseline (today, no gate): 0 junk stopped, 0 genuine photos blocked.\n"
-        "The gate's value over that baseline is not established by this set -- it holds\n"
-        "no photos of people, food, pets or vehicles, which is what the blocking buckets\n"
-        "target. Use --probe with real examples before quoting a detection rate."
+        f"\nFalse block rate on genuine photos: {false_block:.2%} "
+        f"({pos_v['block']}/{len(pos)})"
+    )
+    if shot_total:
+        print(
+            f"Caught across the categories meant to be rejected: "
+            f"{caught_total}/{shot_total} ({caught_total / shot_total:.0%})"
+        )
+    print(
+        "\nBaseline (no gate): 0 rejected, 0 genuine photos blocked. Any catch rate above\n"
+        "zero at a tolerable false-block rate is the gain. Interiors are excluded from the\n"
+        "catch rate on purpose -- ATC-20 evaluates interior damage, so a room is a valid\n"
+        "assessment photo and blocking one would break real inspection work."
     )
 
     if args.write_thresholds:
         spec["thresholds"] = chosen
         spec["evaluated_on"] = {
             "genuine": len(pos),
-            "junk": len(neg),
             "genuine_blocked": pos_v["block"],
             "genuine_warned": pos_v["warn"],
+            "false_block_rate": round(false_block, 5),
+            "junk": len(neg),
             "junk_flagged": neg_v["block"] + neg_v["warn"],
-            "note": "Junk set contains no people/food/pets/vehicles; "
-            "blocking-bucket recall is unmeasured here.",
+            "shot_negatives": {
+                name: {"n": len(scored_categories[name]), **counts}
+                for name, counts in category_summary.items()
+            },
+            "note": "Interiors are expected to pass: ATC-20 includes interior damage.",
         }
         path = MOBILE_OUT / "image_gate_buckets.json"
         path.write_text(json.dumps(spec, indent=2), encoding="utf-8")
