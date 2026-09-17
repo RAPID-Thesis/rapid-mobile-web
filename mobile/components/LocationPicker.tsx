@@ -71,6 +71,8 @@ export default function LocationPicker({
   const [center, setCenter] = useState(initial ?? SJDM_CENTER);
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [online, setOnline] = useState<boolean | null>(null);
+  // Incremented whenever the camera must be repositioned programmatically.
+  const [command, setCommand] = useState(0);
 
   // Re-anchor each time the sheet opens: the fix may have improved, or the
   // inspector may have moved on to another building since last time.
@@ -78,6 +80,7 @@ export default function LocationPicker({
     if (visible) {
       setCenter(initial ?? SJDM_CENTER);
       setZoomIndex(DEFAULT_ZOOM_INDEX);
+      setCommand((c) => c + 1);
     }
   }, [visible, initial]);
 
@@ -134,7 +137,12 @@ export default function LocationPicker({
               <ActivityIndicator color={Colors.primary} />
             </View>
           ) : useBasemap ? (
-            <BasemapView center={center} zoomIndex={zoomIndex} onCenterChange={setCenter} />
+            <BasemapView
+              center={center}
+              zoomIndex={zoomIndex}
+              command={command}
+              onCenterChange={setCenter}
+            />
           ) : (
             <SchematicView
               center={center}
@@ -169,7 +177,10 @@ export default function LocationPicker({
             {initial ? (
               <TouchableOpacity
                 style={styles.zoomBtn}
-                onPress={() => setCenter(initial)}
+                onPress={() => {
+                  setCenter(initial);
+                  setCommand((c) => c + 1);
+                }}
                 accessibilityLabel="Back to my location"
               >
                 <Ionicons name="locate" size={20} color={Colors.primary} />
@@ -223,10 +234,13 @@ export default function LocationPicker({
 function BasemapView({
   center,
   zoomIndex,
+  command,
   onCenterChange,
 }: {
   center: { latitude: number; longitude: number };
   zoomIndex: number;
+  /** Bumped when the camera should follow `center` rather than the finger. */
+  command: number;
   onCenterChange: (next: { latitude: number; longitude: number }) => void;
 }) {
   // Required lazily. expo-maps is a native module, so importing it at module
@@ -241,12 +255,16 @@ function BasemapView({
     }
   }, []);
 
-  // The camera is driven by the user's finger; feeding our own state back in on
-  // every frame would fight them. Only the zoom buttons reposition it.
+  // The camera is driven by the user's finger, so feeding `center` back in on
+  // every frame would fight them. It is re-sent only when something other than
+  // panning should move the camera -- a zoom button, or "back to my location"
+  // -- which is what `command` counts. Keying on zoomIndex alone looked right
+  // and silently broke recentring, since that changes the centre without
+  // changing the zoom.
   const cameraPosition = useMemo(
     () => ({ coordinates: center, zoom: GOOGLE_ZOOM[zoomIndex] ?? 15 }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [zoomIndex],
+    [zoomIndex, command],
   );
 
   if (!maps) {
@@ -294,9 +312,17 @@ function SchematicView({
   // PanResponder rather than react-native-gesture-handler: this modal is not
   // inside a GestureHandlerRootView, and the core responder system needs no
   // provider to work.
+  //
+  // Everything the handlers read lives in refs, so the responder object can be
+  // built once. Putting `center` in the dependency list instead rebuilds it on
+  // every frame of a drag -- the centre changes, the memo re-runs, and React
+  // swaps panHandlers mid-gesture, which drops the rest of the drag.
   const dragOrigin = useRef(center);
+  const latest = useRef({ center, latSpan: 0, lonSpan: 0, size });
+
   const latSpan = ZOOM_SPANS[zoomIndex] ?? 0.01;
   const lonSpan = size.height > 0 ? (latSpan * size.width) / size.height : latSpan;
+  latest.current = { center, latSpan, lonSpan, size };
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -310,18 +336,19 @@ function SchematicView({
         onMoveShouldSetPanResponder: (_evt, gesture) =>
           Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2,
         onPanResponderGrant: () => {
-          dragOrigin.current = center;
+          dragOrigin.current = latest.current.center;
         },
         onPanResponderMove: (_evt, gesture) => {
-          if (size.width === 0 || size.height === 0) return;
+          const { latSpan: lat, lonSpan: lon, size: box } = latest.current;
+          if (box.width === 0 || box.height === 0) return;
           // Dragging moves the map, so the centre travels against the finger.
           onCenterChange({
-            latitude: dragOrigin.current.latitude + (gesture.dy / size.height) * latSpan,
-            longitude: dragOrigin.current.longitude - (gesture.dx / size.width) * lonSpan,
+            latitude: dragOrigin.current.latitude + (gesture.dy / box.height) * lat,
+            longitude: dragOrigin.current.longitude - (gesture.dx / box.width) * lon,
           });
         },
       }),
-    [center, size.width, size.height, latSpan, lonSpan, onCenterChange],
+    [onCenterChange],
   );
 
   const project = useCallback(
