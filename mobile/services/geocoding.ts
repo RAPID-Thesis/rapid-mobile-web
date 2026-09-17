@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 
 import {
   SJDM_BOUNDS,
@@ -133,15 +134,42 @@ async function writeCache(key: string, value: unknown): Promise<void> {
   }
 }
 
+/**
+ * Whether it is worth attempting a request at all.
+ *
+ * Mirrors outbox.ts. Without this check the offline path pays for the online
+ * one: the pacing delay plus the request timeout is about seven seconds, and
+ * that would be spent on *every keystroke pause* before the local suggestions
+ * appeared. In a field app with no signal that is the normal case, not the
+ * exception, so it has to be a fast no rather than a slow failure.
+ */
+async function reachable(): Promise<boolean> {
+  try {
+    const state = await NetInfo.fetch();
+    return state.isConnected === true && state.isInternetReachable !== false;
+  } catch {
+    // If the radio state cannot be read, try the request and let it decide.
+    return true;
+  }
+}
+
 async function cached<T>(key: string, run: () => Promise<T>): Promise<T | null> {
+  const fromCache = async (): Promise<T | null> => {
+    const cache = await readCache();
+    const hit = cache[key];
+    return hit ? (hit.value as T) : null;
+  };
+
+  // A cached answer still beats nothing when offline -- the inspector may have
+  // looked this address up earlier in the day, in signal.
+  if (!(await reachable())) return fromCache();
+
   try {
     const value = await paced(run);
     void writeCache(key, value);
     return value;
   } catch {
-    const cache = await readCache();
-    const hit = cache[key];
-    return hit ? (hit.value as T) : null;
+    return fromCache();
   }
 }
 
