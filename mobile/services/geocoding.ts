@@ -78,10 +78,21 @@ export interface ReverseGeocodeResult {
 
 let lastRequestAt = 0;
 
+/**
+ * Serialise requests at no more than one per MIN_REQUEST_GAP_MS.
+ *
+ * The slot is claimed *before* awaiting. Recording the time afterwards looks
+ * equivalent and is not: two lookups started while a third is sleeping would
+ * both read the same stale `lastRequestAt`, compute the same delay, and fire
+ * together -- breaking the one-request-per-second policy this file claims to
+ * honour. The User-Agent is shared by every install, so a block earned by one
+ * phone is a block for all of them.
+ */
 async function paced<T>(run: () => Promise<T>): Promise<T> {
-  const wait = Math.max(0, lastRequestAt + MIN_REQUEST_GAP_MS - Date.now());
+  const slot = Math.max(Date.now(), lastRequestAt + MIN_REQUEST_GAP_MS);
+  lastRequestAt = slot;
+  const wait = slot - Date.now();
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-  lastRequestAt = Date.now();
   return run();
 }
 
@@ -351,10 +362,15 @@ export async function suggestAddresses(query: string): Promise<AddressSuggestion
     });
   }
 
-  // Online results lead, but keep the recent ones the inspector has vouched for.
+  // Online results lead, but the local tiers are kept behind them rather than
+  // replaced. Returning only recents + online would collapse the list to
+  // recents -- possibly empty -- whenever every Nominatim row fell outside the
+  // SJDM bounds, even though barangay matches were sitting right there. The
+  // barangay rows are also the only ones carrying a district and coordinates.
   const recents = offline.filter((s) => s.source === 'recent');
+  const barangays = offline.filter((s) => s.source === 'barangay');
   const seen = new Set<string>();
-  return [...recents, ...online]
+  return [...recents, ...online, ...barangays]
     .filter((s) => !seen.has(s.label.toLowerCase()) && seen.add(s.label.toLowerCase()))
     .slice(0, 8);
 }

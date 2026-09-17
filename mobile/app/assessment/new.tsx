@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -223,6 +223,12 @@ export default function NewAssessmentScreen() {
   const [suggestionsMuted, setSuggestionsMuted] = useState(false);
   const [locationNote, setLocationNote] = useState<string | null>(null);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  // Mirrors `barangay` for the async reverse-geocode callback, whose closure
+  // may hold a stale copy by the time the lookup resolves.
+  const barangayRef = useRef('');
+  barangayRef.current = barangay;
+  const addressRef = useRef('');
+  addressRef.current = address;
   const [activeLocationPicker, setActiveLocationPicker] = useState<LocationPicker | null>(null);
   const [buildingUse, setBuildingUse] = useState<BuildingUse>('residential');
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
@@ -393,18 +399,21 @@ export default function NewAssessmentScreen() {
       return;
     }
 
-    setAddress((current) => {
-      if (current.trim() || !result.address) return current;
+    if (result.address && !addressRef.current.trim()) {
       setSuggestionsMuted(true);
-      return result.address;
-    });
+      setAddress(result.address);
+    }
 
-    if (result.barangay) {
+    // Both fields move together or neither does. Filling them independently
+    // with `current || next` lets a barangay be written while an unrelated
+    // district is kept -- a District 2 barangay under a District 1 heading,
+    // which is the mismatch this is meant to avoid and which the picker cannot
+    // even display. The ref is read rather than the state variable because this
+    // runs from an async callback, where the closure's copy may be stale.
+    if (result.barangay && !barangayRef.current) {
       const resolvedDistrict = result.district ?? getDistrictForBarangay(result.barangay);
-      // District first: the barangay picker is filtered by it, so setting the
-      // barangay against a stale district leaves the two fields disagreeing.
-      if (resolvedDistrict) setDistrict((current) => current || resolvedDistrict);
-      setBarangay((current) => current || result.barangay!);
+      if (resolvedDistrict) setDistrict(resolvedDistrict);
+      setBarangay(result.barangay);
     }
 
     setLocationNote(
@@ -567,7 +576,13 @@ export default function NewAssessmentScreen() {
         // the portal's field-form card, so a reviewer can see that a record was
         // classified on tabular data alone because its photos were not of a
         // building -- rather than inferring it from a missing image label.
-        photos_flagged: capturedPhotos.filter((p) => p.subjectVerdict !== 'accept').length,
+        // Counted explicitly rather than as "not accepted": 'unchecked' means the
+        // gate never ran (iOS, Expo Go, TFLite unlinked), and folding it into
+        // flagged would report every photo of every such record as "not a
+        // building" -- the precise misreading the third state exists to prevent.
+        photos_flagged: capturedPhotos.filter(
+          (p) => p.subjectVerdict === 'block' || p.subjectVerdict === 'warn',
+        ).length,
         photos_unchecked: capturedPhotos.filter((p) => p.subjectVerdict === 'unchecked').length,
         gps_accuracy_m: coords?.accuracy_m ?? null,
         gps_captured_at: coords?.capturedAt ?? null,

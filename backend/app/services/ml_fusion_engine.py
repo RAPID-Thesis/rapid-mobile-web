@@ -772,6 +772,20 @@ async def process_assessment(assessment_id: UUID) -> None:
         assessment.ai_fused_confidence = result["confidence"]
         assessment.ai_fusion_weights = result["weights"]
 
+        # Record photos the validity gate refused, in structural_data because
+        # there is no column for it and JSONB needs no migration. Without this a
+        # record whose photos were all rejected is byte-identical to one that
+        # arrived with no photos at all -- same null image branch, same
+        # tabular-only weights -- and a reviewer cannot tell "we had nothing to
+        # look at" from "what we were given was not a building". The portal
+        # renders structural_data keys generically, so it surfaces for free.
+        rejected = result.get("rejected_images", 0)
+        if rejected:
+            assessment.structural_data = {
+                **(assessment.structural_data or {}),
+                "photos_rejected_by_gate": rejected,
+            }
+
         try:
             recs = generate_action_plan(
                 phase=_phase_key(assessment.phase),

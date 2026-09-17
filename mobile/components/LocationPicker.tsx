@@ -74,15 +74,24 @@ export default function LocationPicker({
   // Incremented whenever the camera must be repositioned programmatically.
   const [command, setCommand] = useState(0);
 
-  // Re-anchor each time the sheet opens: the fix may have improved, or the
-  // inspector may have moved on to another building since last time.
+  // Re-anchor when the sheet opens: the fix may have improved, or the inspector
+  // may have moved on to another building since last time.
+  //
+  // Keyed on `visible` alone, deliberately. `initial` is built fresh by the
+  // parent on every render, so depending on it re-runs this whenever anything in
+  // the wizard changes -- including the reverse-geocode that a pin confirmation
+  // itself kicks off. The pin would snap back to the phone's own position at
+  // default zoom, throwing away the pan the inspector just made.
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
+
   useEffect(() => {
     if (visible) {
-      setCenter(initial ?? SJDM_CENTER);
+      setCenter(initialRef.current ?? SJDM_CENTER);
       setZoomIndex(DEFAULT_ZOOM_INDEX);
       setCommand((c) => c + 1);
     }
-  }, [visible, initial]);
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -178,7 +187,7 @@ export default function LocationPicker({
               <TouchableOpacity
                 style={styles.zoomBtn}
                 onPress={() => {
-                  setCenter(initial);
+                  setCenter(initialRef.current ?? SJDM_CENTER);
                   setCommand((c) => c + 1);
                 }}
                 accessibilityLabel="Back to my location"

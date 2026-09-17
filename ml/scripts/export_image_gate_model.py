@@ -271,6 +271,34 @@ def export(copy_to_mobile: bool) -> int:
         },
     }
     spec_path = MOBILE_OUT / "image_gate_buckets.json"
+
+    # Keep thresholds that eval_image_gate.py measured, rather than stamping the
+    # defaults back over them. Re-exporting is routine -- adding a class to a
+    # bucket means re-running this script -- and silently reverting person from
+    # the tuned 0.30 to the 0.60 default would drop recall on photos of people
+    # from 75% to 25% with nothing on screen to say so.
+    #
+    # Bucket membership changes invalidate the measurement, so say that plainly
+    # instead of pretending the carried-over numbers still hold.
+    if spec_path.is_file():
+        try:
+            previous = json.loads(spec_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            previous = {}
+        if previous.get("thresholds"):
+            spec["thresholds"] = previous["thresholds"]
+            if previous.get("evaluated_on"):
+                spec["evaluated_on"] = previous["evaluated_on"]
+            changed = previous.get("buckets") != buckets
+            print(f"  Kept tuned thresholds: {spec['thresholds']}")
+            if changed:
+                print(
+                    "  WARNING: bucket membership changed, so those thresholds were "
+                    "measured against a different gate.\n"
+                    "           Re-run: python ml/scripts/eval_image_gate.py "
+                    "--max-false-block 0.01 --write-thresholds"
+                )
+
     spec_path.write_text(json.dumps(spec, indent=2), encoding="utf-8")
     counts = {k: len(v) for k, v in buckets.items()}
     print(f"Wrote {spec_path.name} (bucket sizes: {counts})")
