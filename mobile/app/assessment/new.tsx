@@ -1403,8 +1403,10 @@ const styles = StyleSheet.create({
     backgroundColor: WizardTheme.colors.background,
   },
   locationNote: {
-    marginTop: -WizardTheme.spacing.sm,
-    marginBottom: WizardTheme.spacing.md,
+    // Positive: `input` carries no bottom margin, so a negative one here pulled
+    // the note up against the address box's border instead of below it. The
+    // GPS box that follows supplies its own top margin, so none is needed below.
+    marginTop: 6,
     fontSize: WizardTheme.typography.helper,
     color: Colors.restricted,
   },

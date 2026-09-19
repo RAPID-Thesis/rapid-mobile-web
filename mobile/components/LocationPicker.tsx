@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import Text from './CustomText';
 import { BorderRadius, Colors, FontSize, MinTouchTarget, Spacing } from '../constants/theme';
-import { isWithinSjdm } from '../constants/sjdmLocations';
+import { SJDM_BOUNDS, isWithinSjdm } from '../constants/sjdmLocations';
 import { knownBarangays, lookupBarangay, sampleGeoFeatures } from '../services/ml/geoLookup';
 import type { LocationFix } from '../services/location';
 
@@ -48,6 +48,15 @@ const SJDM_CENTER = { latitude: 14.8138, longitude: 121.0453 };
 /** Visible latitude span per zoom step, widest first. Index is the zoom level. */
 const ZOOM_SPANS = [0.16, 0.08, 0.04, 0.02, 0.01, 0.005, 0.0025];
 const DEFAULT_ZOOM_INDEX = 4;
+
+/**
+ * Where the offline schematic opens: a ~2.2 km window rather than the basemap's
+ * ~1.1 km. The schematic's only landmarks are barangay centres, and at the
+ * street-level zoom the basemap wants, a typical point in the city had two of
+ * them on screen -- and none after a single zoom-in, which read as a blank,
+ * broken map. One step wider shows four to seven, labelled.
+ */
+const SCHEMATIC_DEFAULT_ZOOM_INDEX = 3;
 
 /** Google zoom levels that frame roughly the same area as ZOOM_SPANS. */
 const GOOGLE_ZOOM = [11, 12, 13, 14, 15, 16, 17];
@@ -98,7 +107,12 @@ export default function LocationPicker({
     let cancelled = false;
     void NetInfo.fetch().then((state) => {
       if (cancelled) return;
-      setOnline(state.isConnected === true && state.isInternetReachable !== false);
+      const isOnline = state.isConnected === true && state.isInternetReachable !== false;
+      setOnline(isOnline);
+      // Same condition as useBasemap below: the schematic needs a wider window.
+      if (!(isOnline && mapsConfigured && Platform.OS !== 'web')) {
+        setZoomIndex(SCHEMATIC_DEFAULT_ZOOM_INDEX);
+      }
     });
     return () => {
       cancelled = true;
@@ -157,7 +171,6 @@ export default function LocationPicker({
               center={center}
               zoomIndex={zoomIndex}
               onCenterChange={setCenter}
-              onZoomChange={setZoomIndex}
             />
           )}
 
@@ -309,12 +322,10 @@ function SchematicView({
   center,
   zoomIndex,
   onCenterChange,
-  onZoomChange,
 }: {
   center: { latitude: number; longitude: number };
   zoomIndex: number;
   onCenterChange: (next: { latitude: number; longitude: number }) => void;
-  onZoomChange: (next: number) => void;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -382,8 +393,53 @@ function SchematicView({
       );
   }, [project, size.width, size.height]);
 
+  // A faint graticule, four divisions per screen height and anchored to absolute
+  // coordinates so it slides with a drag. Without it, panning between barangay
+  // centres moved nothing visible and the view looked frozen.
+  const grid = useMemo(() => {
+    if (size.width === 0) return { rows: [] as number[], cols: [] as number[] };
+    const step = latSpan / 4;
+    const rows: number[] = [];
+    const cols: number[] = [];
+    const latTop = center.latitude + latSpan / 2;
+    for (let lat = Math.ceil((center.latitude - latSpan / 2) / step) * step; lat <= latTop; lat += step) {
+      rows.push(project(lat, center.longitude).y);
+    }
+    const lonRight = center.longitude + lonSpan / 2;
+    for (let lon = Math.ceil((center.longitude - lonSpan / 2) / step) * step; lon <= lonRight; lon += step) {
+      cols.push(project(center.latitude, lon).x);
+    }
+    return { rows, cols };
+  }, [center.latitude, center.longitude, latSpan, lonSpan, project, size.width]);
+
+  // The city limits, so an inspector can see whether the pin is inside them.
+  const cityTopLeft = project(SJDM_BOUNDS.north, SJDM_BOUNDS.west);
+  const cityBottomRight = project(SJDM_BOUNDS.south, SJDM_BOUNDS.east);
+  const insideCity = isWithinSjdm(center.latitude, center.longitude);
+
   return (
     <View style={styles.schematic} onLayout={onLayout} {...panResponder.panHandlers}>
+      {grid.rows.map((y) => (
+        <View key={`r${y}`} pointerEvents="none" style={[styles.gridRow, { top: y }]} />
+      ))}
+      {grid.cols.map((x) => (
+        <View key={`c${x}`} pointerEvents="none" style={[styles.gridCol, { left: x }]} />
+      ))}
+      {size.width > 0 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.cityOutline,
+            {
+              left: cityTopLeft.x,
+              top: cityTopLeft.y,
+              width: cityBottomRight.x - cityTopLeft.x,
+              height: cityBottomRight.y - cityTopLeft.y,
+            },
+          ]}
+        />
+      ) : null}
+
       {visible.map(({ brgy, point }) => (
         <View
           key={brgy.name}
@@ -400,19 +456,22 @@ function SchematicView({
         </View>
       ))}
 
+      {/* No centre in view is not the same as being off the map. Inside the
+          city this only means the window falls between centres, so it says
+          how to find one rather than claiming the pin is somewhere unmapped. */}
       {visible.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.fallbackText}>Outside the mapped area</Text>
+        <View pointerEvents="none" style={styles.centered}>
+          <Text style={styles.fallbackText}>
+            {insideCity ? 'Zoom out to see nearby barangays' : 'Outside the mapped area'}
+          </Text>
         </View>
       ) : null}
 
-      <TouchableOpacity
-        style={styles.schematicHint}
-        onPress={() => onZoomChange(Math.min(ZOOM_SPANS.length - 1, zoomIndex + 1))}
-        activeOpacity={0.8}
-      >
+      {/* A label, not a button. It used to zoom in when tapped, so reading it
+          with a finger quietly pushed the view to a zoom with nothing on it. */}
+      <View pointerEvents="none" style={styles.schematicHint}>
         <Text style={styles.schematicHintText}>Drag to move the pin</Text>
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -469,6 +528,26 @@ const styles = StyleSheet.create({
   },
 
   schematic: { flex: 1, backgroundColor: Colors.surfaceSoft, overflow: 'hidden' },
+  gridRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Colors.border,
+  },
+  gridCol: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: Colors.border,
+  },
+  cityOutline: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    borderColor: Colors.primaryBorder,
+    borderRadius: BorderRadius.card,
+  },
   brgyMarker: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 4 },
   brgyDot: {
     width: 8,
