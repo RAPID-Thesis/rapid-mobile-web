@@ -85,13 +85,23 @@ export const SJDM_BOUNDS = {
   east: 121.088,
 } as const;
 
-/** Default map view when a district is selected without a specific barangay. */
+/**
+ * Default map view when a district is selected without a specific barangay.
+ *
+ * Each centre is the middle of the district's barangays as geocoded in
+ * ml/data/gis/barangay_centroids.json -- District 1 is Poblacion, Muzon,
+ * Tungkong Mangga and the south; District 2 is the Sapang Palay barangays to
+ * the north. These used to be hand-set and wrong: District 1 pointed at the
+ * Sapang Palay area and District 2 at a spot south-west of both districts, so
+ * the heatmap's district filter flew to the wrong place. Zoom 13 keeps the
+ * whole district in view even at the map's 420 px minimum height.
+ */
 export const SJDM_DISTRICT_MAP_FOCUS: Record<
   SjdmDistrict,
   { center: [number, number]; zoom: number }
 > = {
-  'District 1': { center: [14.835, 121.055], zoom: 13 },
-  'District 2': { center: [14.778, 121.028], zoom: 13 },
+  'District 1': { center: [14.804, 121.055], zoom: 13 },
+  'District 2': { center: [14.851, 121.061], zoom: 13 },
 };
 
 export function isWithinSjdm(lat: number, lng: number): boolean {
