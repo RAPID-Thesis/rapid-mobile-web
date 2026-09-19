@@ -16,6 +16,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { SyncOnReconnect } from '../components/SyncOnReconnect';
 import PasswordRecoveryLinkHandler from '../components/PasswordRecoveryLinkHandler';
 import { initOnDeviceMl } from '../services/onDeviceMl';
+import { ensureOfflineMap } from '../services/mapTiles';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 SplashScreen.preventAutoHideAsync();
@@ -41,6 +42,9 @@ export default function RootLayout() {
   // still calls initOnDeviceMl() itself if this has not finished.
   useEffect(() => {
     void initOnDeviceMl();
+    // Same reasoning, for the pin picker's street map: fetch the city while
+    // there is signal, so it is already on the phone when there is none.
+    void ensureOfflineMap();
   }, []);
 
   if (!fontsLoaded && !fontError) {

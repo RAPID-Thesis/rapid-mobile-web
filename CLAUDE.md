@@ -82,7 +82,8 @@ Delete on request; otherwise leave alone.
   `GEMINI_API_KEY`, `GEMINI_MODEL`, `MODEL_DIR`, `SRTM_DIR`, `GEO_BUNDLE_PATH`,
   `FUSION_IMAGE_WEIGHT`, `FUSION_TABULAR_WEIGHT`; web reads `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`,
   `VITE_API_URL`, `VITE_SITE_URL`; mobile reads `EXPO_PUBLIC_SUPABASE_URL`,
-  `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_API_URL`. Update the matching `.env.example`
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_API_URL`, and optionally
+  `EXPO_PUBLIC_MAP_STYLE_URL` (defaults to OpenFreeMap; see `mobile/services/mapTiles.ts`). Update the matching `.env.example`
   when adding one. `EXPO_PUBLIC_*` values are baked in at build time — changing them means a
   rebuild.
 - Commit **server** ML binaries (`*.keras`, `*.joblib`) or SRTM tiles — gitignored by design,

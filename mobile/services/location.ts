@@ -39,6 +39,21 @@ export async function requestLocationPermission(): Promise<LocationPermissionRes
   };
 }
 
+/**
+ * Whether foreground location is already granted -- without prompting.
+ *
+ * For UI that should quietly show or hide location-dependent chrome (the map's
+ * "you are here" dot) rather than interrupt the inspector with a dialog.
+ */
+export async function hasLocationPermission(): Promise<boolean> {
+  try {
+    const result = await Location.getForegroundPermissionsAsync();
+    return result.granted;
+  } catch {
+    return false;
+  }
+}
+
 function toFix(coords: Location.LocationObjectCoords): LocationFix {
   return {
     latitude: coords.latitude,

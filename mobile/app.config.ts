@@ -3,21 +3,15 @@ import type { ExpoConfig } from 'expo/config';
 /* ============================================================================
    Expo config
 
-   Was app.json until the map landed. expo-maps renders Google Maps on Android,
-   which needs an API key, and a key is a secret — the repo rule is that nothing
-   is hardcoded, so the config became executable to read one from the
-   environment.
+   Executable rather than app.json so values can come from the environment
+   instead of being hardcoded. EXPO_PUBLIC_* values -- including the optional
+   EXPO_PUBLIC_MAP_STYLE_URL read by services/mapTiles.ts -- are baked in at
+   build time, so changing one means rebuilding.
 
-   The key is read at *build* time, not runtime, and is baked into the APK like
-   every other EXPO_PUBLIC_* value. Rotating it means rebuilding.
-
-   With no key set the build still succeeds and the app still runs: expo-maps
-   renders an empty grid instead of a basemap, and LocationPicker already has to
-   handle exactly that case for offline use, so it degrades to the same fallback
-   rather than crashing.
+   The pin picker's map is MapLibre drawing OpenFreeMap tiles, which need no API
+   key. It replaced expo-maps, which on Android could only show Google's tiles,
+   and those need a billing-enabled Google Cloud project before they draw.
    ========================================================================= */
-
-const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY ?? '';
 
 const config: ExpoConfig = {
   name: 'RADAR',
@@ -57,9 +51,6 @@ const config: ExpoConfig = {
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     predictiveBackGestureEnabled: false,
-    ...(googleMapsApiKey
-      ? { config: { googleMaps: { apiKey: googleMapsApiKey } } }
-      : {}),
   },
   web: {
     favicon: './assets/favicon.png',
@@ -70,9 +61,7 @@ const config: ExpoConfig = {
     'expo-secure-store',
     'onnxruntime-react-native',
     'react-native-fast-tflite',
-    // Location permission is requested by services/location.ts through
-    // expo-location, so the map plugin does not ask for it a second time.
-    ['expo-maps', { requestLocationPermission: false }],
+    '@maplibre/maplibre-react-native',
   ],
   assetBundlePatterns: ['assets/**/*'],
   extra: {
@@ -80,11 +69,6 @@ const config: ExpoConfig = {
     eas: {
       projectId: '11ec69cc-bb74-479d-a5e4-8203f5889ed5',
     },
-    // Whether a basemap is available at all, so LocationPicker can choose its
-    // offline view up front instead of rendering an empty Google grid and
-    // leaving the inspector to wonder why the map is blank. The boolean is not
-    // the key and is safe to expose; the key itself stays in android.config.
-    googleMapsConfigured: googleMapsApiKey.length > 0,
   },
 };
 

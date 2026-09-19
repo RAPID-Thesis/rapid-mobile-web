@@ -10,14 +10,20 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import Constants from 'expo-constants';
+import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import Text from './CustomText';
 import { BorderRadius, Colors, FontSize, MinTouchTarget, Spacing } from '../constants/theme';
 import { SJDM_BOUNDS, isWithinSjdm } from '../constants/sjdmLocations';
 import { knownBarangays, lookupBarangay, sampleGeoFeatures } from '../services/ml/geoLookup';
-import type { LocationFix } from '../services/location';
+import { hasLocationPermission, type LocationFix } from '../services/location';
+import {
+  MAP_STYLE_URL,
+  ensureOfflineMap,
+  getMapLibre,
+  isOfflineMapReady,
+} from '../services/mapTiles';
 
 /* ============================================================================
    Pin picker
@@ -33,10 +39,13 @@ import type { LocationFix } from '../services/location';
 
    Two backends behind one screen:
 
-     online, with a Maps key   Google basemap, real streets
-     otherwise                 a schematic drawn from the bundled geo data
+     street map    MapLibre drawing OpenFreeMap tiles (services/mapTiles.ts):
+                   live when online, and offline from the city pack the app
+                   downloads once while it has signal
+     schematic     the bundled geo data, for a phone that has never had signal
+                   since the offline pack was introduced
 
-   The offline view is not a broken map. It plots the 57 barangay centres the
+   The schematic is not a broken map. It plots the 57 barangay centres the
    bundle carries, labels the nearest ones, and reports live distance-to-fault
    from the same grid the Random Forest reads — an inspector orients by "which
    barangay am I in", and that question it can answer with the radio off. What
@@ -58,10 +67,14 @@ const DEFAULT_ZOOM_INDEX = 4;
  */
 const SCHEMATIC_DEFAULT_ZOOM_INDEX = 3;
 
-/** Google zoom levels that frame roughly the same area as ZOOM_SPANS. */
-const GOOGLE_ZOOM = [11, 12, 13, 14, 15, 16, 17];
+/** Longest the picker waits on the offline-map check before choosing a view. */
+const OFFLINE_CHECK_TIMEOUT_MS = 3000;
 
-const mapsConfigured = Constants.expoConfig?.extra?.googleMapsConfigured === true;
+/** Web-Mercator zoom levels that frame roughly the same area as ZOOM_SPANS. */
+const MAP_ZOOM = [11, 12, 13, 14, 15, 16, 17];
+
+/** Whether this build carries the street-map renderer at all. */
+const streetMapAvailable = getMapLibre() != null;
 
 interface LocationPickerProps {
   visible: boolean;
@@ -80,6 +93,7 @@ export default function LocationPicker({
   const [center, setCenter] = useState(initial ?? SJDM_CENTER);
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [online, setOnline] = useState<boolean | null>(null);
+  const [offlineReady, setOfflineReady] = useState(false);
   // Incremented whenever the camera must be repositioned programmatically.
   const [command, setCommand] = useState(0);
 
@@ -105,12 +119,28 @@ export default function LocationPicker({
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
-    void NetInfo.fetch().then((state) => {
+    // Start from "unknown" on every open. Keeping the previous open's answer
+    // would render that backend for up to the check timeout -- a street map
+    // with no tiles, say, after signal was lost since -- then swap abruptly.
+    setOnline(null);
+    // Wait for the offline-map check before choosing a backend. It runs at
+    // launch too, but asynchronously -- open the picker quickly after starting
+    // the app with no signal and that check may not have reported yet, which
+    // would show the schematic even though the streets are on the phone. The
+    // cap means a stuck native call can never leave the spinner up; online it
+    // also doubles as a second chance to start the download.
+    const offlineCheck = Promise.race([
+      ensureOfflineMap(),
+      new Promise<void>((resolve) => setTimeout(resolve, OFFLINE_CHECK_TIMEOUT_MS)),
+    ]);
+    void Promise.all([NetInfo.fetch(), offlineCheck]).then(([state]) => {
       if (cancelled) return;
       const isOnline = state.isConnected === true && state.isInternetReachable !== false;
+      const ready = isOfflineMapReady();
       setOnline(isOnline);
+      setOfflineReady(ready);
       // Same condition as useBasemap below: the schematic needs a wider window.
-      if (!(isOnline && mapsConfigured && Platform.OS !== 'web')) {
+      if (!(streetMapAvailable && (isOnline || ready))) {
         setZoomIndex(SCHEMATIC_DEFAULT_ZOOM_INDEX);
       }
     });
@@ -119,7 +149,17 @@ export default function LocationPicker({
     };
   }, [visible]);
 
-  const useBasemap = online === true && mapsConfigured && Platform.OS !== 'web';
+  // Streets whenever MapLibre can draw them: online from the network, offline
+  // from the downloaded city pack. The schematic is only for an install that
+  // has never had signal since the pack was introduced.
+  const offlineStreets = online === false && offlineReady;
+  const useBasemap = streetMapAvailable && (online === true || offlineStreets);
+
+  const [showUser, setShowUser] = useState(false);
+  useEffect(() => {
+    if (!visible) return;
+    void hasLocationPermission().then(setShowUser);
+  }, [visible]);
 
   const barangay = useMemo(
     () => lookupBarangay(center.latitude, center.longitude),
@@ -164,6 +204,7 @@ export default function LocationPicker({
               center={center}
               zoomIndex={zoomIndex}
               command={command}
+              showUser={showUser}
               onCenterChange={setCenter}
             />
           ) : (
@@ -212,13 +253,20 @@ export default function LocationPicker({
         </View>
 
         <View style={styles.footer}>
-          {!useBasemap ? (
+          {offlineStreets ? (
             <View style={styles.offlineNote}>
               <Ionicons name="cloud-offline-outline" size={16} color={Colors.restrictedDeep} />
               <Text style={styles.offlineNoteText}>
-                {mapsConfigured
-                  ? 'No connection — showing barangay centres instead of streets.'
-                  : 'No map key configured — showing barangay centres instead of streets.'}
+                No connection — showing the saved street map of San Jose del Monte.
+              </Text>
+            </View>
+          ) : !useBasemap && online !== null ? (
+            <View style={styles.offlineNote}>
+              <Ionicons name="cloud-offline-outline" size={16} color={Colors.restrictedDeep} />
+              <Text style={styles.offlineNoteText}>
+                {streetMapAvailable
+                  ? 'No connection, and the street map has not been saved yet — showing barangay centres. Open the app once with signal to save it for offline use.'
+                  : 'The street map is not available in this build — showing barangay centres.'}
               </Text>
             </View>
           ) : null}
@@ -257,39 +305,36 @@ function BasemapView({
   center,
   zoomIndex,
   command,
+  showUser,
   onCenterChange,
 }: {
   center: { latitude: number; longitude: number };
   zoomIndex: number;
   /** Bumped when the camera should follow `center` rather than the finger. */
   command: number;
+  /** Draw the blue "you are here" dot. Only when location permission is held. */
+  showUser: boolean;
   onCenterChange: (next: { latitude: number; longitude: number }) => void;
 }) {
-  // Required lazily. expo-maps is a native module, so importing it at module
-  // scope would take down Metro's web bundle and any environment where the
-  // native side is not linked -- the same failure mode onnxRunner.ts guards
-  // against for onnxruntime.
-  const maps = useMemo(() => {
-    try {
-      return require('expo-maps') as typeof import('expo-maps');
-    } catch {
-      return null;
-    }
-  }, []);
+  const maplibre = useMemo(() => getMapLibre(), []);
+  const cameraRef = useRef<CameraRef | null>(null);
+  const centerRef = useRef(center);
+  centerRef.current = center;
 
   // The camera is driven by the user's finger, so feeding `center` back in on
-  // every frame would fight them. It is re-sent only when something other than
-  // panning should move the camera -- a zoom button, or "back to my location"
-  // -- which is what `command` counts. Keying on zoomIndex alone looked right
-  // and silently broke recentring, since that changes the centre without
-  // changing the zoom.
-  const cameraPosition = useMemo(
-    () => ({ coordinates: center, zoom: GOOGLE_ZOOM[zoomIndex] ?? 15 }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [zoomIndex, command],
-  );
+  // every frame would fight them. It is moved programmatically only when
+  // something other than panning should move it -- a zoom button, or "back to
+  // my location" -- which is what `command` and `zoomIndex` signal.
+  useEffect(() => {
+    const target = centerRef.current;
+    cameraRef.current?.easeTo({
+      center: [target.longitude, target.latitude],
+      zoom: MAP_ZOOM[zoomIndex] ?? 15,
+      duration: 250,
+    });
+  }, [zoomIndex, command]);
 
-  if (!maps) {
+  if (!maplibre) {
     return (
       <View style={styles.centered}>
         <Text style={styles.fallbackText}>Map unavailable in this build.</Text>
@@ -297,20 +342,34 @@ function BasemapView({
     );
   }
 
-  const MapView = Platform.OS === 'ios' ? maps.AppleMaps.View : maps.GoogleMaps.View;
+  const { Map, Camera, NativeUserLocation } = maplibre;
+
+  const follow = (event: { nativeEvent: { center: [number, number] } }) => {
+    const [longitude, latitude] = event.nativeEvent.center;
+    onCenterChange({ latitude, longitude });
+  };
 
   return (
-    <MapView
+    <Map
       style={StyleSheet.absoluteFill}
-      cameraPosition={cameraPosition}
-      properties={{ isMyLocationEnabled: true }}
-      uiSettings={{ zoomControlsEnabled: false, myLocationButtonEnabled: false }}
-      onCameraMove={(event: { coordinates: { latitude?: number; longitude?: number } }) => {
-        const { latitude, longitude } = event.coordinates;
-        if (latitude == null || longitude == null) return;
-        onCenterChange({ latitude, longitude });
-      }}
-    />
+      mapStyle={MAP_STYLE_URL}
+      // A flat, north-up map: tilting or rotating it adds nothing to placing a
+      // pin and makes the readout harder to trust.
+      touchPitch={false}
+      touchRotate={false}
+      compass={false}
+      onRegionIsChanging={follow}
+      onRegionDidChange={follow}
+    >
+      <Camera
+        ref={cameraRef}
+        initialViewState={{
+          center: [center.longitude, center.latitude],
+          zoom: MAP_ZOOM[zoomIndex] ?? 15,
+        }}
+      />
+      {showUser ? <NativeUserLocation /> : null}
+    </Map>
   );
 }
 
