@@ -114,6 +114,7 @@ Run from the repo root unless noted.
 | Server model smoke test | `python ml/scripts/smoke_test_models.py` |
 | Rebuild geo bundle | `python ml/scripts/export_mobile_geo.py --copy-to-mobile` (**needs `ml/.venv`** for geopandas) |
 | Re-geocode barangays | `python ml/scripts/export_mobile_geo.py --refresh-barangays --copy-to-mobile` (hits Nominatim at 1 req/s, ~2 min; caches to `ml/data/gis/barangay_centroids.json`) |
+| Re-read street names | `python ml/scripts/export_mobile_geo.py --refresh-streets --copy-to-mobile` (reads ~48 OpenFreeMap tiles; caches to `ml/data/gis/street_names.json`) |
 
 ### Image dataset pipeline (run in this order)
 Use `backend/.venv` — these need Pillow/TensorFlow, not geopandas.

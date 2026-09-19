@@ -513,6 +513,242 @@ def _load_barangays(refresh: bool) -> list[dict] | None:
     return records or None
 
 
+# ---------------------------------------------------------------------------
+# Street layer
+#
+# What lets the phone write a street address with no signal. The barangay layer
+# above can only say which barangay a point is in; an inspector still had to
+# type the street by hand whenever the phone was offline, which in the field is
+# most of the time.
+#
+# Source: the OpenFreeMap vector tiles the app's map already draws, so an
+# offline address names the same street the inspector sees on the map. (OSM's
+# Overpass API was the obvious alternative and was down across three mirrors
+# when this was written; the tiles are also exactly what ships to the phone.)
+# Data (c) OpenStreetMap contributors, ODbL -- the map view carries the
+# attribution.
+#
+# The tiles are protobuf. Rather than add a dependency to ml/ for one layer, a
+# minimal Mapbox Vector Tile reader follows; it was checked tile-for-tile
+# against the mapbox-vector-tile package when written.
+
+STREET_CACHE = ML_ROOT / "data" / "gis" / "street_names.json"
+STREET_TILE_ZOOM = 14  # OpenFreeMap's maximum; street names are complete there
+OPENFREEMAP_TILEJSON = "https://tiles.openfreemap.org/planet"
+STREET_UA = "RAPID-seismic-assessment/1.0 (thesis project; offline street names)"
+# Footpaths and tracks rarely carry an address; everything a building fronts does.
+STREET_CLASSES_EXCLUDED = {"path", "track"}
+# ~5 m. Enough to keep a curve's shape for a nearest-street test, far less data.
+STREET_SIMPLIFY_DEG = 0.00005
+
+
+def _pb_varint(buf: bytes, i: int) -> tuple[int, int]:
+    shift = result = 0
+    while True:
+        b = buf[i]
+        i += 1
+        result |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return result, i
+        shift += 7
+
+
+def _pb_fields(buf: bytes):
+    """Yield (field_number, wire_type, value) for one protobuf message."""
+    i, n = 0, len(buf)
+    while i < n:
+        key, i = _pb_varint(buf, i)
+        field, wire = key >> 3, key & 7
+        if wire == 0:
+            value, i = _pb_varint(buf, i)
+        elif wire == 2:
+            length, i = _pb_varint(buf, i)
+            value, i = buf[i : i + length], i + length
+        elif wire == 1:
+            value, i = buf[i : i + 8], i + 8
+        elif wire == 5:
+            value, i = buf[i : i + 4], i + 4
+        else:
+            raise ValueError(f"unsupported protobuf wire type {wire}")
+        yield field, wire, value
+
+
+def _pb_packed(buf: bytes) -> list[int]:
+    out, i = [], 0
+    while i < len(buf):
+        value, i = _pb_varint(buf, i)
+        out.append(value)
+    return out
+
+
+def _mvt_named_lines(tile: bytes, layer_name: str) -> list[tuple[str, str | None, list[tuple[int, int]], int]]:
+    """(name, class, [tile-space (x, y), ...], extent) for each named line in a layer.
+
+    Only what the street layer needs: string values, LineString geometry. y is
+    tile-space, pointing down, as the MVT spec defines it.
+    """
+    import gzip
+
+    if tile[:2] == b"\x1f\x8b":
+        tile = gzip.decompress(tile)
+
+    out = []
+    for field, _, layer in _pb_fields(tile):
+        if field != 3:
+            continue
+        name = None
+        extent = 4096
+        keys: list[str] = []
+        values: list[str | None] = []
+        features: list[bytes] = []
+        for f, _, v in _pb_fields(layer):
+            if f == 1:
+                name = v.decode("utf-8")
+            elif f == 2:
+                features.append(v)
+            elif f == 3:
+                keys.append(v.decode("utf-8"))
+            elif f == 4:
+                s = None
+                for vf, _, vv in _pb_fields(v):
+                    if vf == 1:
+                        s = vv.decode("utf-8")
+                values.append(s)
+            elif f == 5:
+                extent = v
+        if name != layer_name:
+            continue
+
+        for feature in features:
+            tags: list[int] = []
+            geom: list[int] = []
+            gtype = 0
+            for f, _, v in _pb_fields(feature):
+                if f == 2:
+                    tags = _pb_packed(v)
+                elif f == 3:
+                    gtype = v
+                elif f == 4:
+                    geom = _pb_packed(v)
+            if gtype != 2:  # LineString
+                continue
+            props = {keys[tags[k]]: values[tags[k + 1]] for k in range(0, len(tags) - 1, 2)}
+            street = props.get("name")
+            if not street:
+                continue
+
+            # Geometry: MoveTo(1)/LineTo(2) commands with zigzag-encoded deltas.
+            x = y = 0
+            line: list[tuple[int, int]] = []
+            i = 0
+            while i < len(geom):
+                command, count = geom[i] & 7, geom[i] >> 3
+                i += 1
+                if command == 1 and line:
+                    out.append((street, props.get("class"), line, extent))
+                    line = []
+                if command in (1, 2):
+                    for _ in range(count):
+                        dx, dy = geom[i], geom[i + 1]
+                        i += 2
+                        x += (dx >> 1) ^ -(dx & 1)
+                        y += (dy >> 1) ^ -(dy & 1)
+                        line.append((x, y))
+            if line:
+                out.append((street, props.get("class"), line, extent))
+    return out
+
+
+def _tile_to_lonlat(tx: int, ty: int, px: int, py: int, extent: int, z: int) -> tuple[float, float]:
+    n = 2**z
+    lon = (tx + px / extent) / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (ty + py / extent) / n))))
+    return lon, lat
+
+
+def _fetch_streets() -> list[list]:
+    """Named streets over the study area, from the live OpenFreeMap tiles."""
+    import urllib.request
+
+    def get(url: str) -> bytes:
+        req = urllib.request.Request(url, headers={"User-Agent": STREET_UA})
+        with urllib.request.urlopen(req, timeout=40) as response:
+            return response.read()
+
+    template = json.loads(get(OPENFREEMAP_TILEJSON))["tiles"][0]
+    z = STREET_TILE_ZOOM
+    pad = 0.01
+    west, east = BRGY_LON_MIN - pad, BRGY_LON_MAX + pad
+    south, north = BRGY_LAT_MIN - pad, BRGY_LAT_MAX + pad
+
+    def tile_x(lon: float) -> int:
+        return int((lon + 180) / 360 * 2**z)
+
+    def tile_y(lat: float) -> int:
+        return int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * 2**z)
+
+    pieces: list[list] = []
+    tiles = 0
+    for tx in range(tile_x(west), tile_x(east) + 1):
+        for ty in range(tile_y(north), tile_y(south) + 1):
+            url = template.replace("{z}", str(z)).replace("{x}", str(tx)).replace("{y}", str(ty))
+            tiles += 1
+            for name, klass, line, extent in _mvt_named_lines(get(url), "transportation_name"):
+                if klass in STREET_CLASSES_EXCLUDED:
+                    continue
+                coords = [list(_tile_to_lonlat(tx, ty, px, py, extent, z)) for px, py in line]
+                coords = _simplify_ring(coords, STREET_SIMPLIFY_DEG)
+                pieces.append([name, [[round(lon, 5), round(lat, 5)] for lon, lat in coords]])
+
+    print(
+        f"Streets: {len(pieces)} pieces, {len({p[0] for p in pieces})} names from {tiles} tiles",
+        file=sys.stderr,
+    )
+    return pieces
+
+
+def _load_streets(refresh: bool) -> list[list] | None:
+    """Cached street pieces, fetching them first if asked (--refresh-streets)."""
+    if not refresh and STREET_CACHE.is_file():
+        pieces = json.loads(STREET_CACHE.read_text(encoding="utf-8"))
+        print(f"Streets: {len(pieces)} pieces from cache {STREET_CACHE.name}", file=sys.stderr)
+        return pieces
+    if not refresh:
+        print(
+            "Streets: no cache. Re-run with --refresh-streets (needs network) to build one; "
+            "omitting the layer for now.",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        pieces = _fetch_streets()
+    except Exception as exc:
+        print(f"Streets: fetch failed ({exc}); omitting the layer.", file=sys.stderr)
+        return None
+    STREET_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    STREET_CACHE.write_text(json.dumps(pieces, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"Cached -> {STREET_CACHE}", file=sys.stderr)
+    return pieces
+
+
+def _pack_streets(pieces: list[list]) -> dict:
+    """Bundle form: each name stored once, pieces refer to it by index.
+
+    Tile boundaries split one street into many pieces, so storing the name per
+    piece would repeat "Quirino Highway" dozens of times in a file the phone
+    parses on every cold start.
+    """
+    names: list[str] = []
+    index: dict[str, int] = {}
+    packed = []
+    for name, coords in pieces:
+        if name not in index:
+            index[name] = len(names)
+            names.append(name)
+        packed.append([index[name], coords])
+    return {"names": names, "pieces": packed, "source": "OpenStreetMap contributors (ODbL) via OpenFreeMap"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--copy-to-mobile", action="store_true")
@@ -521,6 +757,12 @@ def main() -> int:
         action="store_true",
         help="re-geocode every barangay through Nominatim (~1 request/second) "
         "and rewrite ml/data/gis/barangay_centroids.json",
+    )
+    parser.add_argument(
+        "--refresh-streets",
+        action="store_true",
+        help="re-read street names from the OpenFreeMap tiles and rewrite "
+        "ml/data/gis/street_names.json",
     )
     args = parser.parse_args()
 
@@ -550,11 +792,12 @@ def main() -> int:
         lat += GRID_STEP
 
     barangays = _load_barangays(args.refresh_barangays)
+    streets = _load_streets(args.refresh_streets)
 
-    # version 2 adds "barangays". The key is optional -- readers that find it
-    # missing fall back to the manual picker, which is what v1 always did.
+    # version 2 adds "barangays", version 3 "streets". Both keys are optional --
+    # a reader that finds one missing falls back to what the older bundle did.
     bundle = {
-        "version": 2,
+        "version": 3,
         "bounds": {"lat_min": LAT_MIN, "lat_max": LAT_MAX, "lon_min": LON_MIN, "lon_max": LON_MAX},
         "grid_step_deg": GRID_STEP,
         "fault_segments": fault_segments,
@@ -562,6 +805,8 @@ def main() -> int:
     }
     if barangays:
         bundle["barangays"] = barangays
+    if streets:
+        bundle["streets"] = _pack_streets(streets)
 
     MOBILE_OUT.mkdir(parents=True, exist_ok=True)
     out_path = MOBILE_OUT / "sjdm_geo.json"
@@ -570,6 +815,8 @@ def main() -> int:
     if barangays:
         polygons = sum(1 for b in barangays if b.get("polygon"))
         summary += f", {len(barangays)} barangays ({polygons} with polygons)"
+    if streets:
+        summary += f", {len(streets)} street pieces"
     print(f"Wrote {out_path} ({summary})")
 
     if args.copy_to_mobile:

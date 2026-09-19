@@ -76,10 +76,25 @@ const MAP_ZOOM = [11, 12, 13, 14, 15, 16, 17];
 /** Whether this build carries the street-map renderer at all. */
 const streetMapAvailable = getMapLibre() != null;
 
+/** How wide the opening view is: a street, a barangay, or a whole district. */
+export type PickerScale = 'street' | 'barangay' | 'district';
+
+const SCALE_ZOOM_INDEX: Record<PickerScale, number> = {
+  street: DEFAULT_ZOOM_INDEX, // ~1.1 km tall
+  barangay: 3, //               ~2.2 km: a barangay and its neighbours
+  district: 1, //               ~9 km: half the city
+};
+
 interface LocationPickerProps {
   visible: boolean;
-  /** Where to open. Falls back to the centre of the city. */
+  /** The phone's current coordinate; "back to my location" returns here. */
   initial: { latitude: number; longitude: number } | null;
+  /**
+   * Where the view opens, when that is not `initial` -- the barangay or
+   * district the inspector chose. Moves the view only; the pin sets no
+   * coordinate until "Use this location" is tapped.
+   */
+  start?: { latitude: number; longitude: number; scale: PickerScale } | null;
   onCancel: () => void;
   onConfirm: (fix: LocationFix) => void;
 }
@@ -87,6 +102,7 @@ interface LocationPickerProps {
 export default function LocationPicker({
   visible,
   initial,
+  start = null,
   onCancel,
   onConfirm,
 }: LocationPickerProps) {
@@ -107,11 +123,18 @@ export default function LocationPicker({
   // default zoom, throwing away the pan the inspector just made.
   const initialRef = useRef(initial);
   initialRef.current = initial;
+  const startRef = useRef(start);
+  startRef.current = start;
 
   useEffect(() => {
     if (visible) {
-      setCenter(initialRef.current ?? SJDM_CENTER);
-      setZoomIndex(DEFAULT_ZOOM_INDEX);
+      const opening = startRef.current;
+      setCenter(
+        opening
+          ? { latitude: opening.latitude, longitude: opening.longitude }
+          : (initialRef.current ?? SJDM_CENTER),
+      );
+      setZoomIndex(opening ? SCALE_ZOOM_INDEX[opening.scale] : DEFAULT_ZOOM_INDEX);
       setCommand((c) => c + 1);
     }
   }, [visible]);
@@ -141,7 +164,9 @@ export default function LocationPicker({
       setOfflineReady(ready);
       // Same condition as useBasemap below: the schematic needs a wider window.
       if (!(streetMapAvailable && (isOnline || ready))) {
-        setZoomIndex(SCHEMATIC_DEFAULT_ZOOM_INDEX);
+        // Widen a street-level view, but never narrow one that is already wider
+        // -- a district view stays a district view.
+        setZoomIndex((z) => Math.min(z, SCHEMATIC_DEFAULT_ZOOM_INDEX));
       }
     });
     return () => {

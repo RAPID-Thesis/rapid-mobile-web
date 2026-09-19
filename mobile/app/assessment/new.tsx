@@ -23,7 +23,7 @@ import { AssessmentPhase, BuildingUse } from '../../types';
 import Step3StructuralData, { StructuralDataState } from './Step3StructuralData';
 import { WizardTheme } from '../../constants/wizardTheme';
 import CameraCapture, { CapturedPhoto } from './CameraCapture';
-import LocationPicker from '../../components/LocationPicker';
+import LocationPicker, { type PickerScale } from '../../components/LocationPicker';
 import Text from '../../components/CustomText';
 import { useAuth } from '../../context/AuthContext';
 import type { LocalPredictionResult } from '../../services/localPredict';
@@ -33,7 +33,12 @@ import {
   type LocalActionPlanResult,
 } from '../../services/localActionPlan';
 import { predictOnDevice } from '../../services/onDeviceMl';
-import { sampleGeoFeatures } from '../../services/ml/geoLookup';
+import {
+  barangayCentre,
+  districtCentre,
+  lookupBarangay,
+  sampleGeoFeatures,
+} from '../../services/ml/geoLookup';
 import { getModelLoadError } from '../../services/ml/modelLoader';
 import { formatPercent } from '../../utils/formatPercent';
 import { enqueueOutbox, processOutbox } from '../../services/outbox';
@@ -260,6 +265,54 @@ export default function NewAssessmentScreen() {
     fallingHazard: false,
   });
 
+  /** Half the height of the picker's barangay-scale view (~2.2 km tall). */
+  const BARANGAY_VIEW_HALF_KM = 1.1;
+  const kmBetween = (
+    a: { latitude: number; longitude: number },
+    b: { latitude: number; longitude: number },
+  ): number => {
+    const dLat = (a.latitude - b.latitude) * 111.32;
+    const dLon = (a.longitude - b.longitude) * 111.32 * Math.cos((a.latitude * Math.PI) / 180);
+    return Math.hypot(dLat, dLon);
+  };
+
+  /**
+   * Where the map opens: over the area the inspector chose, unless the current
+   * coordinate is already in it.
+   *
+   * The exception matters. Jumping to a barangay's centre when the GPS fix is
+   * already inside that barangay would put the pin somewhere *less* precise than
+   * the fix -- and an inspector who then just taps "Use this location" would
+   * trade a measured position for a centroid. A pin the inspector dropped
+   * themselves always wins: it is a deliberate choice, not a reading.
+   */
+  const pickerStart = useMemo((): {
+    latitude: number;
+    longitude: number;
+    scale: PickerScale;
+  } | null => {
+    if (coords?.source === 'map-pin') return null;
+    const here = coords ? lookupBarangay(coords.latitude, coords.longitude) : null;
+
+    if (barangay) {
+      const centre = barangayCentre(barangay);
+      if (centre) {
+        // Distance, not "which barangay is the fix in": most barangays are known
+        // only by a centre point, so nearest-centre misnames a fix whenever a
+        // neighbour's centre happens to be closer. Within half the barangay
+        // view's height the fix would be on screen anyway, so open there.
+        if (coords && kmBetween(coords, centre) <= BARANGAY_VIEW_HALF_KM) return null;
+        return { ...centre, scale: 'barangay' };
+      }
+    }
+    if (district) {
+      if (here && here.district === district) return null;
+      const centre = districtCentre(district);
+      if (centre) return { ...centre, scale: 'district' };
+    }
+    return null;
+  }, [coords, barangay, district]);
+
   const autoBuildingCode = useMemo(
     () => buildingCodeFromLocation(address, barangay, profile?.lgu_code ?? ''),
     [address, barangay, profile?.lgu_code]
@@ -399,9 +452,10 @@ export default function NewAssessmentScreen() {
       return;
     }
 
-    if (result.address && !addressRef.current.trim()) {
+    const fillAddress = Boolean(result.address) && !addressRef.current.trim();
+    if (fillAddress) {
       setSuggestionsMuted(true);
-      setAddress(result.address);
+      setAddress(result.address!);
     }
 
     // Both fields move together or neither does. Filling them independently
@@ -410,18 +464,31 @@ export default function NewAssessmentScreen() {
     // which is the mismatch this is meant to avoid and which the picker cannot
     // even display. The ref is read rather than the state variable because this
     // runs from an async callback, where the closure's copy may be stale.
-    if (result.barangay && !barangayRef.current) {
-      const resolvedDistrict = result.district ?? getDistrictForBarangay(result.barangay);
+    const foundBarangay = result.barangay;
+    const fillBarangay = foundBarangay != null && !barangayRef.current;
+    if (fillBarangay) {
+      const resolvedDistrict = result.district ?? getDistrictForBarangay(foundBarangay);
       if (resolvedDistrict) setDistrict(resolvedDistrict);
-      setBarangay(result.barangay);
+      setBarangay(foundBarangay);
     }
 
+    // Say what actually happened. An offline address is the nearest named street
+    // on the saved map, so it asks to be checked; an address that was already
+    // typed is left alone, and the note must not claim otherwise.
+    const guessedBarangay =
+      fillBarangay && result.precision === 'approximate'
+        ? ` Barangay set to the nearest one, ${result.barangay} — check it too.`
+        : '';
     setLocationNote(
-      result.precision === 'approximate'
-        ? `Nearest barangay offline: ${result.barangay}. Check it before continuing.`
-        : result.source === 'offline'
-          ? `Barangay identified offline: ${result.barangay}.`
-          : 'Address filled from your location.',
+      fillAddress && result.source === 'offline'
+        ? `Address filled offline from the saved street map. Check it before continuing.${guessedBarangay}`
+        : fillAddress
+          ? 'Address filled from your location.'
+          : result.source === 'offline' && result.barangay
+            ? result.precision === 'approximate'
+              ? `Nearest barangay offline: ${result.barangay}. Check it before continuing.`
+              : `Barangay identified offline: ${result.barangay}.`
+            : null,
     );
   };
 
@@ -778,6 +845,19 @@ export default function NewAssessmentScreen() {
               placeholderTextColor={WizardTheme.colors.textMuted}
             />
 
+            <SelectField
+              label="District *"
+              placeholder="Select district"
+              value={district}
+              onPress={() => setActiveLocationPicker('district')}
+            />
+            <SelectField
+              label="Barangay *"
+              placeholder={district ? 'Select barangay' : 'Select a district first'}
+              value={barangay}
+              onPress={() => setActiveLocationPicker('barangay')}
+              disabled={!district}
+            />
             <Text style={styles.fieldLabel}>Address *</Text>
             <TextInput
               style={styles.input}
@@ -949,19 +1029,6 @@ export default function NewAssessmentScreen() {
               ) : null}
             </View>
 
-            <SelectField
-              label="District *"
-              placeholder="Select district"
-              value={district}
-              onPress={() => setActiveLocationPicker('district')}
-            />
-            <SelectField
-              label="Barangay *"
-              placeholder={district ? 'Select barangay' : 'Select a district first'}
-              value={barangay}
-              onPress={() => setActiveLocationPicker('barangay')}
-              disabled={!district}
-            />
 
             <Text style={styles.fieldLabel}>Building Use</Text>
             <Text style={styles.hint}>All field assessments in this deployment are recorded as residential.</Text>
@@ -1208,6 +1275,7 @@ export default function NewAssessmentScreen() {
       <LocationPicker
         visible={mapPickerOpen}
         initial={coords ? { latitude: coords.latitude, longitude: coords.longitude } : null}
+        start={pickerStart}
         onCancel={() => setMapPickerOpen(false)}
         onConfirm={(fix) => {
           setCoords(fix);

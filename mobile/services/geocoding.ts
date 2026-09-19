@@ -8,7 +8,7 @@ import {
   isWithinSjdm,
   type SjdmDistrict,
 } from '../constants/sjdmLocations';
-import { knownBarangays, lookupBarangay } from './ml/geoLookup';
+import { knownBarangays, lookupBarangay, nearestStreet } from './ml/geoLookup';
 
 /* ============================================================================
    Address search and reverse geocoding
@@ -411,15 +411,28 @@ export async function reverseGeocode(
   }
 
   const match = lookupBarangay(latitude, longitude);
-  if (!match) return null;
+  // The street comes from the bundled street layer (the same names the map
+  // draws). Nothing is invented: with no named street within reach the address
+  // stays empty for the inspector to type, as it did before streets existed.
+  // Inside the city only: the street layer runs ~1 km past it, and a fix across
+  // the border would otherwise get an address ending "San Jose del Monte".
+  const street = isWithinSjdm(latitude, longitude) ? nearestStreet(latitude, longitude) : null;
+  if (!match && !street) return null;
+
+  const precise = match != null && match.precision === 'polygon' && !match.approximate;
+  // The barangay goes into the address line only when it is known, not guessed
+  // from the nearest centre -- otherwise the saved address could name one
+  // barangay while the barangay field, which the inspector may have set
+  // themselves, names another.
+  const address = street
+    ? [street, precise ? match.name : null, SJDM_MUNICIPALITY].filter(Boolean).join(', ')
+    : null;
 
   return {
-    // Deliberately not a street address: the bundle has no street data, and
-    // inventing one from a centroid would be worse than leaving the field empty.
-    address: null,
-    barangay: match.name,
-    district: getDistrictForBarangay(match.name),
-    precision: match.precision === 'polygon' && !match.approximate ? 'barangay' : 'approximate',
+    address,
+    barangay: match?.name ?? null,
+    district: match ? getDistrictForBarangay(match.name) : null,
+    precision: precise ? 'barangay' : 'approximate',
     source: 'offline',
   };
 }

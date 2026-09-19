@@ -28,14 +28,23 @@ export interface GeoBarangay {
   approx?: boolean;
 }
 
+interface GeoStreets {
+  /** Each street name once; pieces refer to it by index. */
+  names: string[];
+  /** [name index, [[lon, lat], ...]] -- a street is split into pieces at tile edges. */
+  pieces: [number, number[][]][];
+  source?: string;
+}
+
 interface GeoBundle {
-  /** 1 = grid + faults only. 2 adds `barangays`, which stays optional. */
+  /** 1 = grid + faults. 2 adds `barangays`, 3 adds `streets`; both stay optional. */
   version?: number;
   bounds: { lat_min: number; lat_max: number; lon_min: number; lon_max: number };
   grid_step_deg: number;
   fault_segments: number[][][];
   grid: GeoCell[];
   barangays?: GeoBarangay[];
+  streets?: GeoStreets;
 }
 
 const bundle = sjdmGeo as GeoBundle;
@@ -180,6 +189,130 @@ export function lookupBarangay(latitude: number, longitude: number): BarangayMat
     precision: 'nearest',
     distanceKm: nearestKm,
     approximate: nearest.approx === true,
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   Offline street lookup
+   ---------------------------------------------------------------------------
+   The barangay answers "which area"; this answers "which street", so an address
+   can be written with the radio off. The names come from the same OpenFreeMap
+   tiles the map draws, so the street named here is the one on the screen.
+   ------------------------------------------------------------------------- */
+
+/**
+ * Farther than this, no street is named.
+ *
+ * A GPS fix is good to ~20 m and a house sits back from its road, so the right
+ * street is usually within a few tens of metres. Beyond 60 m the nearest line is
+ * as likely to be the street behind as the one in front, and a confident wrong
+ * address is worse than an empty field the inspector fills in.
+ */
+const MAX_STREET_M = 60;
+
+const M_PER_DEG_LAT = 111_320;
+
+interface StreetIndexEntry {
+  name: number;
+  coords: number[][];
+  minLon: number;
+  maxLon: number;
+  minLat: number;
+  maxLat: number;
+}
+
+let streetIndex: StreetIndexEntry[] | null = null;
+
+/** Bounding boxes, built on first use rather than at app start. */
+function streets(): StreetIndexEntry[] {
+  if (streetIndex) return streetIndex;
+  streetIndex = (bundle.streets?.pieces ?? []).map(([name, coords]) => {
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    for (const [lon, lat] of coords) {
+      if (lon! < minLon) minLon = lon!;
+      if (lon! > maxLon) maxLon = lon!;
+      if (lat! < minLat) minLat = lat!;
+      if (lat! > maxLat) maxLat = lat!;
+    }
+    return { name, coords, minLon, maxLon, minLat, maxLat };
+  });
+  return streetIndex;
+}
+
+/**
+ * The named street nearest a coordinate, if one is close enough to be the
+ * building's own. Works offline.
+ */
+export function nearestStreet(latitude: number, longitude: number): string | null {
+  const names = bundle.streets?.names;
+  if (!names?.length) return null;
+
+  // Local flat-earth metres: exact enough across a few hundred metres, and far
+  // cheaper than haversine for the thousands of segments this touches.
+  const mPerDegLon = M_PER_DEG_LAT * Math.cos((latitude * Math.PI) / 180);
+  const padLat = MAX_STREET_M / M_PER_DEG_LAT;
+  const padLon = MAX_STREET_M / mPerDegLon;
+
+  let best: number | null = null;
+  let bestM = MAX_STREET_M;
+
+  for (const piece of streets()) {
+    if (
+      longitude < piece.minLon - padLon ||
+      longitude > piece.maxLon + padLon ||
+      latitude < piece.minLat - padLat ||
+      latitude > piece.maxLat + padLat
+    ) {
+      continue;
+    }
+    const c = piece.coords;
+    for (let i = 0; i < c.length - 1; i++) {
+      const ax = (c[i]![0]! - longitude) * mPerDegLon;
+      const ay = (c[i]![1]! - latitude) * M_PER_DEG_LAT;
+      const bx = (c[i + 1]![0]! - longitude) * mPerDegLon;
+      const by = (c[i + 1]![1]! - latitude) * M_PER_DEG_LAT;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      // Distance from the origin (the query point) to segment a-b.
+      const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2));
+      const d = Math.hypot(ax + t * dx, ay + t * dy);
+      if (d < bestM) {
+        bestM = d;
+        best = piece.name;
+      }
+    }
+  }
+
+  return best == null ? null : (names[best] ?? null);
+}
+
+/**
+ * Where a barangay is, for pointing the map at it. Null if the bundle cannot
+ * place it (a few barangays have no geocoded centre).
+ */
+export function barangayCentre(name: string): { latitude: number; longitude: number } | null {
+  const needle = name.trim().toLowerCase();
+  const hit = (bundle.barangays ?? []).find((b) => b.name.toLowerCase() === needle);
+  return hit ? { latitude: hit.lat, longitude: hit.lon } : null;
+}
+
+/**
+ * The middle of a district, as the mean of its barangays' centres.
+ *
+ * Derived from the bundle rather than written down: the portal carries
+ * hand-set district focus points, and a figure maintained by hand in two places
+ * is one that eventually disagrees with the data it summarises.
+ */
+export function districtCentre(district: string): { latitude: number; longitude: number } | null {
+  const members = (bundle.barangays ?? []).filter((b) => b.district === district);
+  if (!members.length) return null;
+  return {
+    latitude: members.reduce((sum, b) => sum + b.lat, 0) / members.length,
+    longitude: members.reduce((sum, b) => sum + b.lon, 0) / members.length,
   };
 }
 
